@@ -32,7 +32,7 @@ If you're already familiar with Arch, you might be tempted to just run `pacman -
 
 ### Rolling back bad updates
 
-If you ever have a problem after doing an update, you can rollback your system to the snapshot taken before the update. Just restart and pick the snapshot in the boot loading menu from before you started the update.
+If you ever have a problem after doing an update, you can rollback your system to the snapshot taken before the update. On Limine, restart and pick the snapshot in the boot loading menu from before you started the update. On Apple Silicon with Btrfs root `@`, run `omarchy-snapshot restore` from a terminal and follow its confirmation, reboot and retained-root undo instructions. See [system snapshots](47-system-snapshots.md) for scope and boot-file limitations.
 
 ![bootloader](images/bootloader.webp)
 

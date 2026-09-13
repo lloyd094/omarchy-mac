@@ -142,21 +142,13 @@ which every Mac does.
 
 ## Rolling back to the pre-Omarchy state
 
-`@fresh` is the fresh Asahi Alarm system from just after the migration. To
-rewind the whole install (this discards `/`, keeps `@home` and `@log`):
+`@fresh` is the fresh Asahi Alarm system from just after the migration. Run `omarchy-snapshot restore` and select `@fresh` to restore that root while retaining `@home` and `@log`. The Mac recovery helper transfers the existing nested Snapper backend into the restored root, preserving its history and subvolume identity. Raw snapshot-and-rename commands omit nested subvolumes and leave future snapshots broken.
 
-```bash
-sudo mkdir -p /mnt/top
-sudo mount -o subvolid=5 "$(findmnt -no SOURCE / | sed 's/\[.*\]//')" /mnt/top
-sudo btrfs subvolume snapshot /mnt/top/@fresh /mnt/top/@new   # writable clone
-sudo mv /mnt/top/@ /mnt/top/@old-$(date +%s)
-sudo mv /mnt/top/@new /mnt/top/@
-sudo reboot
-```
+Finish other snapshot, backup and Btrfs maintenance first, and do not start concurrent direct Snapper writers during recovery. Reboot before another restore. The command prints the exact undo route through the recovery helper retained under `@old-<timestamp>`; keep that root until recovery and undo are verified. Undo does not require the restored baseline to contain Omarchy or Python, but does require the existing Bash, Btrfs, mount and systemd tools. A baseline without a Snapper configuration stays unconfigured, with the history retained. Update older Omarchy software before using its own recovery commands again.
 
-After verifying the reboot, delete the parked `@old-*` subvolume from
-`/mnt/top`. Note `@home` survives the rollback — delete and recreate it too if
-you want the full fresh state.
+The root exchange uses two renames. A power loss between them can leave `@` absent and require a rescue boot of the retained root before running the retained helper with `repair`. The UUID-bound transaction receipt permits verified rollback; it is not a bootloader recovery mechanism. Do not interrupt recovery or assume the ESP is covered.
+
+Recovery can automatically reattach history lost by an earlier restore only when the current root's Btrfs parent UUID identifies a snapshot inside exactly one retained backend. Ambiguous state, custom snapshot mounts and conflicting paths are preserved for manual inspection.
 
 ## Limitations
 
