@@ -127,7 +127,7 @@ cleanup() {
       # Maintenance starts before inventory and the prompt. Restore our service
       # changes first; a failed restoration must retain its identities/receipt.
       if (( rollback_ok )); then
-        reset_cancel_journal "$RESET_STATE" "$RESET_TXN_FS $RESET_TXN_STAMP $RESET_TXN_ROOT $RESET_TXN_FACTORY - -" || echo "Pre-confirm reset journal needs inspection: $RESET_STATE" >&2
+        reset_cancel_journal "$RESET_STATE" "$RESET_TXN_FS $RESET_TXN_STAMP $RESET_TXN_ROOT $RESET_TXN_FACTORY - - $RESET_TXN_DEFAULT $RESET_TXN_DEFAULT_PATH" || echo "Pre-confirm reset journal needs inspection: $RESET_STATE" >&2
       else
         status=1
         echo "Pre-confirm maintenance restoration is incomplete; preserve $RESET_STATE for inspection." >&2
@@ -455,6 +455,7 @@ stage_full_reset() {
   mv -T "$top/@" "$top/@omarchy-old-$RESET_TXN_STAMP"
   mv -T "$next" "$top/@"
   [[ $(reset_uuid "$top/@") == "$RESET_TXN_NEXT" && $(reset_uuid "$top/@factory") == "$RESET_TXN_CLEAN" ]] || fail "Root exchange identity check failed"
+  reset_default_set "$top" "$RESET_TXN_NEXT" "$top/@" || fail "Could not hand the Btrfs default to the factory root"
   printf 'pending %s %s\n' "$RESET_TXN_FS" "$RESET_TXN_NEXT" >/var/lib/omarchy/factory-reset.lock
   reset_state_write "$RESET_STATE/phase" committed || fail "Could not record completed exchange"
   sync -f "$top"
@@ -523,9 +524,11 @@ main() {
   RESET_TXN_FS=$(findmnt -rn -T "$TOP_MNT" -o UUID)
   RESET_TXN_ROOT=$(reset_uuid "$TOP_MNT/@") || fail "Could not identify current root"
   RESET_TXN_FACTORY=$(reset_uuid "$TOP_MNT/@factory") || fail "Could not identify factory baseline"
+  IFS=$'\t' read -r RESET_TXN_DEFAULT RESET_TXN_DEFAULT_PATH < <(reset_default_identity "$TOP_MNT") || fail "Could not identify the Btrfs default subvolume"
   RESET_TXN_NEXT=- RESET_TXN_CLEAN=-
   reset_transaction_record "$RESET_STATE" || fail "Could not record reset identities"
   prepare_reset_inventory
+  reset_default_in_inventory "$RESET_STATE/inventory" "$RESET_TXN_DEFAULT" "$RESET_TXN_DEFAULT_PATH" || fail "The Btrfs default is outside the confirmed reset inventory"
   confirm_reset
 
   stage_full_reset

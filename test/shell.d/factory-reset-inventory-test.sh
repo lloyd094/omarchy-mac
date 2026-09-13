@@ -8,6 +8,7 @@ stat() { if [[ $* == '-c %u '* ]]; then echo 0; else command stat "$@"; fi; }
 sync() { :; }
 fixture_volume() { mkdir -p "$1"; printf '%s\n' "$2" >"$1/.uuid"; }
 reset_uuid() { [[ ! -L $1 && -f $1/.uuid ]] && cat "$1/.uuid"; }
+reset_default_uuid() { printf '%s\n' "${DEFAULT_UUID:--}"; }
 reset_empty_volume() { [[ -z $(find "$1" -mindepth 1 ! -name .uuid -print -quit) ]]; }
 reset_nested_paths() {
   local path
@@ -29,7 +30,7 @@ btrfs() {
 new_fixture() {
   TOP="$test_tmp/$1/top"; mkdir -p "$TOP"
   MANIFEST="$test_tmp/$1/inventory" STATE="$test_tmp/$1/state" DELETIONS="$test_tmp/$1/deletions"
-  : >"$DELETIONS"; MOUNTS="" FAIL_DELETE=""
+  : >"$DELETIONS"; MOUNTS="" FAIL_DELETE="" DEFAULT_UUID=-
   fixture_volume "$TOP/@" 11111111-1111-1111-1111-111111111111
   fixture_volume "$TOP/@factory" 22222222-2222-2222-2222-222222222222
   fixture_volume "$TOP/@old-1" 33333333-3333-3333-3333-333333333333
@@ -60,6 +61,12 @@ MOUNTS="/somewhere $FS_UUID /@old-1/.snapshots"
 if reset_cleanup_inventory "$TOP" "$MANIFEST" "$STATE" "$FS_UUID"; then fail 'mounted nested history'; fi
 [[ ! -s $DELETIONS ]] || fail 'whole inventory preflight before any deletion'
 pass 'mounted descendant prevents all cleanup mutation'
+new_fixture default
+move_roots
+DEFAULT_UUID=33333333-3333-3333-3333-333333333333
+if reset_cleanup_inventory "$TOP" "$MANIFEST" "$STATE" "$FS_UUID"; then fail 'default subvolume deletion'; fi
+[[ ! -s $DELETIONS ]] || fail 'default subvolume refusal must precede deletion'
+pass 'cleanup refuses a selected default subvolume before deleting anything'
 new_fixture unexpected
 move_roots
 fixture_volume "$TOP/@old-1/new-child" 88888888-8888-8888-8888-888888888888

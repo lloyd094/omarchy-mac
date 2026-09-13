@@ -10,6 +10,53 @@ reset_uuid() {
   [[ $identity =~ ^[a-fA-F0-9-]{36}$ ]] || return 1
   printf '%s\n' "$identity"
 }
+reset_default_identity() {
+  local top=$1 row path identity
+  row=$(LC_ALL=C btrfs subvolume get-default "$top") || return $?
+  if [[ $row == 'ID 5 (FS_TREE)' ]]; then
+    printf '%s\t%s\n' - -
+    return 0
+  fi
+  [[ $row == ID\ *\ gen\ *\ top\ level\ *\ path\ * ]] || return 1
+  path=${row#* path }
+  reset_safe_path "$path" || return 1
+  identity=$(reset_uuid "$top/$path") || return $?
+  printf '%s\t%s\n' "$identity" "$path"
+}
+reset_default_uuid() {
+  local identity path extra
+  IFS=$'\t' read -r identity path extra < <(reset_default_identity "$1") || return $?
+  [[ -z $extra ]] || return 1
+  printf '%s\n' "$identity"
+}
+reset_default_set() {
+  local top=$1 expected=$2 path=$3
+  [[ $expected =~ ^[a-fA-F0-9-]{36}$ && $path == "$top/"* && $(reset_uuid "$path") == "$expected" ]] || return 1
+  btrfs subvolume set-default "$path" || return $?
+  [[ $(reset_default_uuid "$top") == "$expected" ]]
+}
+reset_default_set_top() {
+  local top=$1
+  btrfs subvolume set-default 5 "$top" || return $?
+  [[ $(reset_default_uuid "$top") == - ]]
+}
+reset_default_restore() {
+  local top=$1 expected=$2 path=$3
+  if [[ $expected == - && $path == - ]]; then
+    reset_default_set_top "$top"
+  else
+    reset_safe_path "$path" && reset_default_set "$top" "$expected" "$top/$path"
+  fi
+}
+reset_default_in_inventory() {
+  local manifest=$1 identity=$2 path=$3
+  [[ $identity == - && $path == - ]] && return 0
+  [[ $identity =~ ^[a-fA-F0-9-]{36}$ ]] && reset_safe_path "$path" || return 1
+  awk -F '\t' -v identity="$identity" -v path="$path" '
+    $1 == identity && $2 == path { matches++ }
+    END { exit(matches == 1 ? 0 : 1) }
+  ' "$manifest"
+}
 reset_safe_path() {
   [[ $1 =~ ^[a-zA-Z0-9@._/-]+$ && $1 != /* && $1 != */ && $1 != *//* && /$1/ != */../* && /$1/ != */./* ]]
 }
@@ -183,10 +230,16 @@ reset_row_state() {
   }
 }
 reset_cleanup_preflight() {
-  local top=$1 manifest=$2 state=$3 filesystem_uuid=$4 identity source destination role nested path
+  local top=$1 manifest=$2 state=$3 filesystem_uuid=$4 identity source destination role nested path default_uuid
   local -A planned=()
   reset_inventory_validate "$manifest" && reset_state_bind "$manifest" "$state" "$filesystem_uuid" || return $?
-  while IFS=$'\t' read -r identity source destination role; do planned[$destination]=$identity; done <"$manifest"
+  default_uuid=$(reset_default_uuid "$top") || return $?
+  while IFS=$'\t' read -r identity source destination role; do
+    [[ $default_uuid == - || $identity != "$default_uuid" ]] || {
+      reset_error "Refusing to delete the default subvolume: $destination"; return 1;
+    }
+    planned[$destination]=$identity
+  done <"$manifest"
   while IFS=$'\t' read -r identity source destination role; do
     reset_row_state "$top" "$state" "$identity" "$destination" || return $?
     (( RESET_ROW_PRESENT )) || continue
@@ -340,14 +393,19 @@ reset_transaction_read() {
   local state=$1 extra
   [[ -d $state && ! -L $state && $(stat -c %u "$state") == 0 && $(stat -c %a "$state") == 700 ]] || return 1
   reset_private_file "$state/identities" || return 1
-  read -r RESET_TXN_FS RESET_TXN_STAMP RESET_TXN_ROOT RESET_TXN_FACTORY RESET_TXN_NEXT RESET_TXN_CLEAN extra <"$state/identities"
+  read -r RESET_TXN_FS RESET_TXN_STAMP RESET_TXN_ROOT RESET_TXN_FACTORY RESET_TXN_NEXT RESET_TXN_CLEAN RESET_TXN_DEFAULT RESET_TXN_DEFAULT_PATH extra <"$state/identities"
   [[ -z $extra && $RESET_TXN_STAMP =~ ^[0-9]+$ ]] || return 1
   local identity
   for identity in "$RESET_TXN_FS" "$RESET_TXN_ROOT" "$RESET_TXN_FACTORY"; do [[ $identity =~ ^[a-fA-F0-9-]{36}$ ]] || return 1; done
-  for identity in "$RESET_TXN_NEXT" "$RESET_TXN_CLEAN"; do [[ $identity == - || $identity =~ ^[a-fA-F0-9-]{36}$ ]] || return 1; done
+  for identity in "$RESET_TXN_NEXT" "$RESET_TXN_CLEAN" "$RESET_TXN_DEFAULT"; do [[ $identity == - || $identity =~ ^[a-fA-F0-9-]{36}$ ]] || return 1; done
+  if [[ $RESET_TXN_DEFAULT == - ]]; then
+    [[ $RESET_TXN_DEFAULT_PATH == - ]] || return 1
+  else
+    reset_safe_path "$RESET_TXN_DEFAULT_PATH" || return 1
+  fi
 }
 reset_transaction_record() {
-  reset_state_write "$1/identities" "$RESET_TXN_FS $RESET_TXN_STAMP $RESET_TXN_ROOT $RESET_TXN_FACTORY $RESET_TXN_NEXT $RESET_TXN_CLEAN"
+  reset_state_write "$1/identities" "$RESET_TXN_FS $RESET_TXN_STAMP $RESET_TXN_ROOT $RESET_TXN_FACTORY $RESET_TXN_NEXT $RESET_TXN_CLEAN $RESET_TXN_DEFAULT $RESET_TXN_DEFAULT_PATH"
 }
 reset_transaction_rollback() {
   local top=$1 state=$2 current
@@ -377,6 +435,7 @@ reset_transaction_rollback() {
     [[ $(reset_uuid "$top/@omarchy-old-factory-$RESET_TXN_STAMP") == "$RESET_TXN_FACTORY" ]] || return 1
     mv -T "$top/@omarchy-old-factory-$RESET_TXN_STAMP" "$top/@factory" || return $?
   fi
+  reset_default_restore "$top" "$RESET_TXN_DEFAULT" "$RESET_TXN_DEFAULT_PATH" || return $?
   if [[ -e $state/boot/publication || -L $state/boot/publication ]]; then
     reset_private_file "$state/boot/publication" || return 1
     if [[ $(cat "$state/boot/publication") != rolled-back ]]; then

@@ -58,8 +58,8 @@ setup_case() {
  TOP_MNT="$test_tmp/$1" RESET_STATE="$test_tmp/$1/state" EVENTS="$test_tmp/$1-events"
  mkdir -p "$RESET_STATE"
  chmod 700 "$RESET_STATE"
- RESET_TXN_FS=f RESET_TXN_STAMP=s RESET_TXN_ROOT=r RESET_TXN_FACTORY=b
- printf '%s\n' 'f s r b - -' >"$RESET_STATE/identities"
+ RESET_TXN_FS=f RESET_TXN_STAMP=s RESET_TXN_ROOT=r RESET_TXN_FACTORY=b RESET_TXN_DEFAULT=r RESET_TXN_DEFAULT_PATH=@
+ printf '%s\n' 'f s r b - - r @' >"$RESET_STATE/identities"
  chmod 600 "$RESET_STATE/identities"
  : >"$EVENTS"; : >"$test_tmp/history"
  # shellcheck disable=SC2034 # read by the extracted command functions
