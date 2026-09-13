@@ -3,6 +3,8 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/base-test.sh"
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
+recipe_source="${OMARCHY_PKGS_PATH:-$ROOT/../omarchy-pkgs}"
+[[ ! -d $recipe_source/pkgbuilds ]] || recipe_source="$recipe_source/pkgbuilds"
 
 # Exercise local-source package metadata, including the pair's dynamic pin.
 cat >"$work_dir/PKGBUILD" <<'RECIPE'
@@ -49,7 +51,7 @@ pass 'release builds reject unversioned recipe inputs before staging'
 (
   source "$ROOT/build-inputs/prepare-recipes.sh"
   OMARCHY_ALLOW_CUSTOM_RECIPES=1 prepare_omarchy_recipes \
-    "$ROOT/../omarchy-pkgs/pkgbuilds" "$work_dir/with-keyring" >/dev/null
+    "$recipe_source" "$work_dir/with-keyring" >/dev/null
   keyring="$work_dir/with-keyring/pkgbuilds/omarchy-mac-keyring"
   [[ -f $keyring/PKGBUILD && -f $keyring/omarchy-mac-keyring.install ]]
   cmp "$ROOT/default/pacman/keyrings/omarchy-mac.gpg" "$keyring/omarchy-mac.gpg"
@@ -62,7 +64,7 @@ pass 'prepared recipes carry exact fork-owned trust bytes'
 # upstream recipe checkout. Validate only after preparing the combined tree.
 (
   source "$ROOT/build-packages.sh"
-  upstream="$ROOT/../omarchy-pkgs/pkgbuilds"
+  upstream="$recipe_source"
   prepared="$work_dir/prepared-with-fork-keyring"
   [[ ! -e $upstream/omarchy-mac-keyring ]]
   if ( require_package_recipes "$upstream" >/dev/null 2>&1 ); then exit 1; fi
