@@ -42,14 +42,41 @@ omarchy_arm_channel_render() {
   ' "$config" >"$output"
 }
 
-# Keep large captured transactions on persistent disk, independent of /tmp.
+# DownloadUser must traverse the whole path for downloads and frozen file://
+# repositories. A private HOME/cache cannot provide that contract. Allocate only
+# our new child under verified root-controlled persistent parents; never loosen
+# an existing directory or disable pacman's download sandbox.
 omarchy_arm_channel_stage_new() {
-  local scratch="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/channels"
-  mkdir -p "$scratch" || return
-  case $(findmnt -n -o FSTYPE -T "$scratch") in
-    "" | tmpfs | ramfs) echo "ARM channel staging needs a disk-backed cache directory." >&2; return 1 ;;
-  esac
-  mktemp -d "$scratch/transaction.XXXXXXXX"
+  sudo bash -euo pipefail -c '
+    owner="$1"; group="$2"; stage=""; complete=0
+    [[ $owner =~ ^[0-9]+$ && $group =~ ^[0-9]+$ ]] || exit 1
+    cleanup() {
+      if [[ -n $stage && $complete == 0 ]]; then rmdir -- "$stage"; fi
+    }
+    trap cleanup EXIT
+    for path in / /var /var/cache /var/cache/omarchy /var/cache/omarchy/channels; do
+      if [[ ! -e $path && ! -L $path ]]; then
+        case "$path" in
+          /var/cache/omarchy | /var/cache/omarchy/channels) mkdir -m 755 -- "$path" ;;
+          *) echo "Missing channel cache parent: $path" >&2; exit 1 ;;
+        esac
+      fi
+      [[ -d $path && ! -L $path ]] || { echo "Unsafe channel cache parent: $path" >&2; exit 1; }
+      read -r uid mode < <(stat -c "%u %a" -- "$path")
+      [[ $uid == 0 && $mode =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 0022) == 0 && (8#$mode & 0001) != 0 )) || {
+        echo "Channel cache parent must be root-owned, traversable and not writable by other users: $path" >&2
+        exit 1
+      }
+      case $(findmnt -n -o FSTYPE -T "$path") in
+        "" | tmpfs | ramfs) echo "ARM channel staging needs disk-backed cache parents: $path" >&2; exit 1 ;;
+      esac
+    done
+    stage=$(mktemp -d /var/cache/omarchy/channels/transaction.XXXXXXXX)
+    chmod 755 "$stage"
+    chown "$owner:$group" "$stage"
+    printf "%s\n" "$stage"
+    complete=1
+  ' bash "$(id -u)" "$(id -g)"
 }
 
 omarchy_arm_channel_stage_remove() {
