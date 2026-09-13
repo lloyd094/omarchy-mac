@@ -87,6 +87,12 @@ pass 'actual filesystem backing governs run-path staging acceptance'
 
 mount() { printf '%s\n' "$*" >>"$test_tmp/mount.log"; }
 mkdir -p "$test_tmp/next/boot"
+reset_boot_bind_staged_root "$test_tmp/next"
+reset_boot_bind_staged_root /
+mapfile -t root_mount_calls <"$test_tmp/mount.log"
+[[ ${#root_mount_calls[@]} == 1 && ${root_mount_calls[0]} == "--bind $test_tmp/next $test_tmp/next" ]] || fail 'staged root mount visibility'
+pass 'staged subvolume is exposed as a mount while the real root needs no bind'
+: >"$test_tmp/mount.log"
 reset_boot_bind_boot_readonly "$test_tmp/next"
 mapfile -t mount_calls <"$test_tmp/mount.log"
 [[ ${#mount_calls[@]} == 2 ]] || fail 'unexpected boot bind call count'

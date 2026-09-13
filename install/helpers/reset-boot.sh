@@ -145,6 +145,15 @@ reset_boot_stage_path_valid() {
   [[ $(findmnt -rn -T "${stage%/*}" -o FSTYPE) == btrfs && $(findmnt -rn -T "${stage%/*}" -o UUID) == "$root_uuid" ]]
 }
 
+reset_boot_bind_staged_root() {
+  local root=${1%/}
+  [[ -n $root ]] || root=/
+  # grub-probe resolves devices through mountinfo. A Btrfs subvolume reached
+  # only as a directory below the top-level mount is invisible there after
+  # chroot, so expose the staged subvolume as its own private mount.
+  [[ $root == / ]] || mount --bind "$root" "$root"
+}
+
 reset_boot_bind_boot_readonly() {
   local root=${1%/}
   [[ -n $root ]] || root=/
@@ -174,6 +183,7 @@ reset_boot_generate_private() {
   install -d -m 700 "$stage/runtime" "$stage/runtime/tmp" "$stage/tmp" "$stage/files/grub" "$stage/files/m1n1" || return $?
   # /run and /tmp are backed by the caller's disk staging directory. These
   # mounts are private and disappear on exit, including generator failures.
+  reset_boot_bind_staged_root "$root" || return $?
   for directory in proc sys dev; do
     mount --rbind "/$directory" "$root/$directory" || return $?
     mount --make-rslave "$root/$directory" || return $?
