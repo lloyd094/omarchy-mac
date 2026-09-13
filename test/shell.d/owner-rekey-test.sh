@@ -62,7 +62,9 @@ owner_rekey_run /fixture-luks "$STAGED" "$OWNER" "$STATE"
 [[ $(owner_rekey_slots /fixture-luks) == 2 && ! -e $STAGED ]] || fail 'owner-only final slots'
 [[ $(grep -c '^boot$' "$EVENTS") == 1 && $(grep -c '^add$' "$EVENTS") == 1 ]] || fail 'retry does not regenerate or add needless key'
 pass 'partial retirement after throwaway removal resumes through owner credential'
+removals_before=$(grep -c '^remove$' "$EVENTS")
 owner_rekey_run /fixture-luks "$STAGED" "$OWNER" "$STATE"
+[[ $(grep -c '^remove$' "$EVENTS") == $((removals_before + 1)) ]] || fail 'completed retry repeats auto-unlock cleanup'
 pass 'completed receipt is idempotent with absent staged key'
 new_fixture missing
 FAIL_KILL=1

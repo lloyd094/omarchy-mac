@@ -106,6 +106,9 @@ owner_rekey_run() {
       digest=${digest%% *}
       reset_state_write "$state/receipt" "1 $uuid $owner_slot boot-published $digest" || return $?
     fi
+    # Cleanup is deliberately repeated for receipt retries. A stale or
+    # reintroduced key/drop-in must never survive a successful completion.
+    [[ $phase == owner-added ]] || owner_rekey_remove_auto_unlock || return $?
     owner_rekey_boot_check "$state" || return $?
     cryptsetup open --test-passphrase --key-slot "$owner_slot" --key-file <(printf '%s' "$owner_password") "$device" || return $?
     slots=$(owner_rekey_slots "$device") || return $?

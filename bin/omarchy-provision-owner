@@ -321,11 +321,34 @@ NOW=0
 FINALIZE_BASE=-1
 FINALIZE_TOTAL=$(grep -c '^run_logged' "$OMARCHY_PATH/install/user/all.sh" 2>/dev/null || echo 0)
 
+# Any surviving auto-unlock artifact means retirement is still pending.  Test
+# symlinks explicitly: a dangling link must fail closed instead of making owner
+# provisioning look complete.
+owner_auto_unlock_pending() {
+  local provisioning_dir="${1:-$PROVISIONING_DIR}" system_root="${2:-/}"
+  local path
+  for path in \
+    "$provisioning_dir/luks-key" \
+    "$system_root/etc/omarchy/provisioning.key" \
+    "$system_root/etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf" \
+    "$system_root/etc/default/grub.d/99-omarchy-provisioning-unlock.cfg" \
+    "$system_root/etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf"; do
+    [[ -e $path || -L $path ]] && return 0
+  done
+  return 1
+}
+
+owner_rekey_pending() {
+  local provisioning_dir="${1:-$PROVISIONING_DIR}" system_root="${2:-/}"
+  owner_auto_unlock_pending "$provisioning_dir" "$system_root" ||
+    [[ -e $provisioning_dir/owner-rekey || -L $provisioning_dir/owner-rekey ]]
+}
+
 # Whether this boot will re-key LUKS (encrypted installs stage a throwaway key).
 # The re-key rebuilds the UKI and is the slowest single step, so it needs a wide
 # band of its own; unencrypted installs skip it and let finalize take the room.
 REKEY_PENDING=false
-[[ -e $PROVISIONING_DIR/luks-key || -L $PROVISIONING_DIR/luks-key || -e $PROVISIONING_DIR/owner-rekey || -L $PROVISIONING_DIR/owner-rekey ]] && REKEY_PENDING=true
+owner_rekey_pending && REKEY_PENDING=true
 
 # Per-mille bands per phase: "lo hi tau". tau shapes the asymptotic time floor;
 # it is not a duration prediction. A wide band moves visibly; a narrow one looks
@@ -888,19 +911,28 @@ finalize_user() {
 # the staged auto-unlock keyfile would leave the disk effectively unencrypted
 # forever.
 rekey_luks() {
-  local state="$PROVISIONING_DIR/owner-rekey" device
+  local state="$PROVISIONING_DIR/owner-rekey" staged_key="$PROVISIONING_DIR/luks-key" device
   # A valid in-progress receipt survives removal of the throwaway slot/key.
-  # Missing staged material must not bypass unfinished retirement.
-  if [[ ! -e $PROVISIONING_DIR/luks-key && ! -L $PROVISIONING_DIR/luks-key && ! -e $state && ! -L $state ]]; then
-    [[ ! -e /etc/omarchy/provisioning.key ]] || return 1
-    return 0
+  # If only the installed auto-unlock copy survived, it is still the staged
+  # credential and can complete retirement. Unsafe links fail reset_private_file
+  # inside owner_rekey_run. Config remnants without a credential or receipt are
+  # not enough to prove a safe boot, so leave provisioning pending.
+  if [[ ! -e $staged_key && ! -L $staged_key ]]; then
+    if [[ -e /etc/omarchy/provisioning.key || -L /etc/omarchy/provisioning.key ]]; then
+      staged_key=/etc/omarchy/provisioning.key
+    elif [[ ! -e $state && ! -L $state ]]; then
+      return 1
+    fi
   fi
   source "$OMARCHY_PATH/install/helpers/owner-rekey.sh"
   device=$(luks_device) || return $?
-  if ! owner_rekey_run "$device" "$PROVISIONING_DIR/luks-key" <(printf '%s' "$password") "$state" >>"$LOG_FILE" 2>&1; then
+  if ! owner_rekey_run "$device" "$staged_key" <(printf '%s' "$password") "$state" >>"$LOG_FILE" 2>&1; then
     say --foreground 1 "Disk re-key remains pending. Retry with the same confirmed owner disk password; do not discard its receipt."
     return 1
   fi
+  # A completed receipt proves the disk and published boot, but must not make a
+  # reintroduced key or drop-in invisible to the outer provisioning flow.
+  ! owner_auto_unlock_pending || return 1
 }
 
 owner_rekey_limine_boot() {
@@ -1025,7 +1057,7 @@ run_provisioning() {
     touch "$FINALIZE_WARNING_FLAG"
   fi
 
-  if [[ -e $PROVISIONING_DIR/luks-key || -L $PROVISIONING_DIR/luks-key || -e $PROVISIONING_DIR/owner-rekey || -L $PROVISIONING_DIR/owner-rekey ]]; then
+  if owner_rekey_pending; then
     log_step "re-keying LUKS to the user's password"
     echo rekey >"$STATE_FILE"
     rekey_luks || return $?
