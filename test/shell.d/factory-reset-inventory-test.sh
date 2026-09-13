@@ -10,9 +10,14 @@ fixture_volume() { mkdir -p "$1"; printf '%s\n' "$2" >"$1/.uuid"; }
 reset_uuid() { [[ ! -L $1 && -f $1/.uuid ]] && cat "$1/.uuid"; }
 reset_empty_volume() { [[ -z $(find "$1" -mindepth 1 ! -name .uuid -print -quit) ]]; }
 reset_nested_paths() {
-  local file
-  while IFS= read -r file; do printf '%s\n' "${file#"$TOP/"}" | sed 's|/\.uuid$||'; done < <(find "$1" -mindepth 2 -name .uuid | sort)
+  local path
+  # Match real list -o: stop at each directly contained subvolume instead of
+  # flattening all descendants (which hid the missing recursive walk).
+  while IFS= read -r path; do printf '%s\n' "${path#"$TOP/"}"; done < <(
+    find "$1" -mindepth 1 -type d -exec test -f '{}/.uuid' \; -print -prune | sort
+  )
 }
+
 findmnt() { printf '%s\n' "${MOUNTS:-/ /test none}"; }
 btrfs() {
   case "$1 $2" in
@@ -106,3 +111,28 @@ if reset_recreate_clean_subvolume "$TOP" @home "$STATE"; then fail 'receipt writ
 reset_state_write() { real_state_write "$@"; }
 reset_recreate_clean_subvolume "$TOP" @home "$STATE"
 pass 'failed replacement receipt cleans only own empty temporary and permits retry'
+
+new_fixture deep
+fixture_volume "$TOP/@/.snapshots" 88888888-8888-8888-8888-888888888888
+fixture_volume "$TOP/@/.snapshots/1/snapshot" 99999999-9999-9999-9999-999999999999
+fixture_volume "$TOP/@/.snapshots/1/snapshot/deeper" aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+MANIFEST="$test_tmp/deep/complete-inventory"
+reset_inventory_build "$TOP" 123 "$MANIFEST"
+[[ $(wc -l <"$MANIFEST") == 9 ]] || fail 'every depth must be captured exactly once'
+grep -qx $'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\t@/.snapshots/1/snapshot/deeper\t@omarchy-old-123/.snapshots/1/snapshot/deeper\tnested-current-root' "$MANIFEST" || fail 'deep UUID and destination mapping'
+reset_inventory_verify_sources "$TOP" "$MANIFEST"
+pass 'direct-child enumeration recursively captures three nested levels with exact destination identities'
+eval "$(declare -f reset_nested_paths | sed '1s/reset_nested_paths/direct_nested_paths/')"
+reset_nested_paths() {
+ direct_nested_paths "$1"
+ if [[ $1 == "$TOP/@" ]]; then
+   printf '%s\n' '@/.snapshots/1/snapshot' '@/.snapshots/1/snapshot/deeper'
+ fi
+}
+reset_inventory_build "$TOP" 123 "$test_tmp/deep/recursive-list-inventory"
+cmp "$MANIFEST" "$test_tmp/deep/recursive-list-inventory" || fail 'recursive list variants must record each path once'
+reset_inventory_verify_sources "$TOP" "$test_tmp/deep/recursive-list-inventory"
+pass 'repeated paths from recursive listing variants are inventoried exactly once'
+fixture_volume "$TOP/@/.snapshots/duplicate" aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+if reset_inventory_build "$TOP" 123 "$test_tmp/deep/duplicate-inventory"; then fail 'duplicate descendant UUID must refuse'; fi
+pass 'recursive inventory refuses duplicate identities without authorizing cleanup'

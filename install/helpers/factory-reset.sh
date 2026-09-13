@@ -26,20 +26,33 @@ reset_nested_paths() {
   done <<<"$listing"
 }
 reset_inventory_add() {
-  local top=$1 source=$2 destination=$3 role=$4 manifest=$5 path identity relative
+  local top=$1 source=$2 destination=$3 role=$4 manifest=$5 path identity relative nested child entry_role
   reset_safe_path "$source" && reset_safe_path "$destination" || return 1
-  identity=$(reset_uuid "$top/$source") || return $?
-  printf '%s\t%s\t%s\t%s\n' "$identity" "$source" "$destination" "$role" >>"$manifest" || return $?
-  local nested
-  nested=$(reset_nested_paths "$top/$source") || return $?
-  while IFS= read -r path; do
-    [[ -n $path ]] || continue
-    [[ $path == "$source/"* ]] || { reset_error "Unexpected nested subvolume: $path"; return 1; }
-    relative=${path#"$source/"}
+  # list -o reports direct children, not the complete descendant tree. Walk
+  # each child's own list so nested Snapper snapshots are explicitly authorized.
+  local -a pending=("$source")
+  local -A seen=()
+  while (( ${#pending[@]} )); do
+    path=${pending[0]}
+    pending=("${pending[@]:1}")
+    [[ ! ${seen[$path]+yes} ]] || continue
+    seen[$path]=1
     identity=$(reset_uuid "$top/$path") || return $?
-    printf '%s\t%s\t%s/%s\t%s\n' "$identity" "$path" "$destination" "$relative" "nested-$role" >>"$manifest" || return $?
-  done <<<"$nested"
+    if [[ $path == "$source" ]]; then
+      relative="" entry_role=$role
+    else
+      relative="/${path#"$source/"}" entry_role="nested-$role"
+    fi
+    printf '%s\t%s\t%s%s\t%s\n' "$identity" "$path" "$destination" "$relative" "$entry_role" >>"$manifest" || return $?
+    nested=$(reset_nested_paths "$top/$path") || return $?
+    while IFS= read -r child; do
+      [[ -n $child ]] || continue
+      [[ $child == "$path/"* ]] || { reset_error "Unexpected nested subvolume: $child"; return 1; }
+      pending+=("$child")
+    done <<<"$nested"
+  done
 }
+
 reset_inventory_build() {
   local top=$1 stamp=$2 manifest=$3 candidate
   [[ $stamp =~ ^[0-9]+$ && ! -e $manifest && ! -L $manifest ]] || return 1
@@ -460,4 +473,5 @@ reset_limine_resume() {
   done <"$state/limine-services"
   for unit in "${masks[@]}"; do systemctl unmask --runtime "$unit" || return $?; done
   for unit in "${paths[@]}"; do systemctl start "$unit" || return $?; done
+  rm -- "$state/limine-services"
 }

@@ -113,13 +113,25 @@ cleanup() {
         echo "Original root and baseline restored. Failed staging is retained at $RESET_STATE and @omarchy-reset-* for inspection." >&2
       fi
     fi
+    if [[ ${swap_done:-0} == 0 && ${reset_services_started:-0} == 1 && $rollback_ok == 1 ]]; then
+      if ! reset_limine_resume "$RESET_STATE"; then
+        rollback_ok=0
+        echo "Limine service restoration needs inspection: $RESET_STATE/limine-services" >&2
+      fi
+      if ! backend_resume_services; then
+        rollback_ok=0
+        echo "Reset service restoration needs inspection: $BACKEND_SERVICE_RECEIPT" >&2
+      fi
+    fi
     if [[ ${reset_started:-0} == 0 && ${reset_journal_created:-0} == 1 ]]; then
-      # This invocation has created only its private pre-confirm journal.
-      # Canceling the existing prompt must leave the command retryable.
-      reset_cancel_journal "$RESET_STATE" "$RESET_TXN_FS $RESET_TXN_STAMP $RESET_TXN_ROOT $RESET_TXN_FACTORY - -" || echo "Pre-confirm reset journal needs inspection: $RESET_STATE" >&2
-    elif [[ ${swap_done:-0} == 0 && ${reset_services_started:-0} == 1 && $rollback_ok == 1 ]]; then
-      reset_limine_resume "$RESET_STATE" || echo "Limine service restoration needs inspection: $RESET_STATE/limine-services" >&2
-      backend_resume_services || echo "Reset service restoration needs inspection: $BACKEND_SERVICE_RECEIPT" >&2
+      # Maintenance starts before inventory and the prompt. Restore our service
+      # changes first; a failed restoration must retain its identities/receipt.
+      if (( rollback_ok )); then
+        reset_cancel_journal "$RESET_STATE" "$RESET_TXN_FS $RESET_TXN_STAMP $RESET_TXN_ROOT $RESET_TXN_FACTORY - -" || echo "Pre-confirm reset journal needs inspection: $RESET_STATE" >&2
+      else
+        status=1
+        echo "Pre-confirm maintenance restoration is incomplete; preserve $RESET_STATE for inspection." >&2
+      fi
     fi
     umount -R "$TOP_MNT" 2>/dev/null || true
   fi
@@ -335,12 +347,9 @@ rebuild_next_boot() {
   umount "$next$esp_mount"
 }
 
-stage_full_reset() {
-  local top="$TOP_MNT" next="$TOP_MNT/$NEXT_NAME" clean="$TOP_MNT/@omarchy-reset-factory" user
-  reset_inventory_verify_sources "$top" "$RESET_STATE/inventory" || fail "Confirmed reset inventory changed"
-  [[ ! -e $next && ! -L $next && ! -e $clean && ! -L $clean ]] || fail "A prior reset staging object needs inspection"
-  reset_started=1
-  reset_state_write "$RESET_STATE/backend" "$RESET_BOOT_BACKEND" || fail "Could not record boot backend"
+prepare_reset_inventory() {
+  # The recovery lock is already held. Pause managed writers before capturing
+  # identities, and keep them paused across the prompt and root exchange.
   source "$OMARCHY_PATH/bin/omarchy-mac-snapper-backend"
   # shellcheck disable=SC2034 # consumed by the sourced recovery maintenance helpers
   BACKEND_MASKED=() BACKEND_TIMERS=() BACKEND_DAEMON=0
@@ -349,6 +358,16 @@ stage_full_reset() {
   reset_services_started=1
   backend_quiesce || fail "Could not obtain exclusive Snapper maintenance"
   reset_limine_quiesce "$RESET_STATE" || fail "Could not obtain exclusive Limine maintenance"
+  reset_inventory_build "$TOP_MNT" "$RESET_TXN_STAMP" "$RESET_STATE/inventory" || fail "Could not construct complete reset inventory"
+  reset_inventory_verify_sources "$TOP_MNT" "$RESET_STATE/inventory" || fail "Reset inventory is not stable"
+}
+
+stage_full_reset() {
+  local top="$TOP_MNT" next="$TOP_MNT/$NEXT_NAME" clean="$TOP_MNT/@omarchy-reset-factory" user
+  reset_inventory_verify_sources "$top" "$RESET_STATE/inventory" || fail "Confirmed reset inventory changed"
+  [[ ! -e $next && ! -L $next && ! -e $clean && ! -L $clean ]] || fail "A prior reset staging object needs inspection"
+  reset_started=1
+  reset_state_write "$RESET_STATE/backend" "$RESET_BOOT_BACKEND" || fail "Could not record boot backend"
   reset_state_write "$RESET_STATE/phase" preparing || fail "Could not record reset preparation"
   log "Cloning the factory snapshot"
   btrfs subvolume snapshot "$top/@factory" "$next" >>"$LOG_FILE"
@@ -506,8 +525,7 @@ main() {
   RESET_TXN_FACTORY=$(reset_uuid "$TOP_MNT/@factory") || fail "Could not identify factory baseline"
   RESET_TXN_NEXT=- RESET_TXN_CLEAN=-
   reset_transaction_record "$RESET_STATE" || fail "Could not record reset identities"
-  reset_inventory_build "$TOP_MNT" "$RESET_TXN_STAMP" "$RESET_STATE/inventory" || fail "Could not construct complete reset inventory"
-  reset_inventory_verify_sources "$TOP_MNT" "$RESET_STATE/inventory" || fail "Reset inventory is not stable"
+  prepare_reset_inventory
   confirm_reset
 
   stage_full_reset
