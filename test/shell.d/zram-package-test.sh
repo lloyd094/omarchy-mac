@@ -20,6 +20,8 @@ migration_name=$(basename "$migration")
 first_marker="$first_home/.local/state/omarchy/migrations/$migration_name"
 second_marker="$second_home/.local/state/omarchy/migrations/$migration_name"
 mkdir -p "$stub_bin" "$test_root/migrations"
+mkdir -p "$test_root/install/helpers"
+cp "$ROOT/install/helpers/zram.sh" "$test_root/install/helpers/zram.sh"
 cp "$migration" "$test_root/migrations/$migration_name"
 mkdir -p "$test_root/default/systemd/zram-generator.conf.d"
 cp "$ROOT/default/systemd/zram-generator.conf.d/90-omarchy.conf" \

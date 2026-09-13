@@ -7,15 +7,10 @@ echo "Repair missing zram configuration on previously migrated installs"
 state_dir="${OMARCHY_MIGRATION_STATE:-$HOME/.local/state/omarchy/migrations}"
 repair_pending="$state_dir/1789246530.zram-repair-pending"
 if [[ ! -f $repair_pending ]]; then
-  zram_root="${OMARCHY_ZRAM_ROOT:-}"
-  for directory in /etc /run /usr/local/lib /usr/lib; do
-    for config in "$zram_root$directory/systemd/zram-generator.conf" \
-      "$zram_root$directory/systemd/zram-generator.conf.d/"*.conf; do
-      if [[ -e $config || -L $config ]]; then
-        exit 0
-      fi
-    done
-  done
+  source "$OMARCHY_PATH/install/helpers/zram.sh"
+  if omarchy_zram_has_config; then
+    exit 0
+  fi
   # A failed activation may already have installed the fallback. Remember that
   # this user started the repair so a retry cannot mistake it for a local choice.
   mkdir -p "$state_dir"
