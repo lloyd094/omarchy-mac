@@ -84,3 +84,12 @@ reset_boot_stage_path_valid "$RESET_BOOT_ROOT_UUID" /run/omarchy-factory-stage-f
 STAGE_FS=tmpfs
 if reset_boot_stage_path_valid "$RESET_BOOT_ROOT_UUID" /run/omarchy-factory-stage-fixture; then fail 'RAM staging accepted'; fi
 pass 'actual filesystem backing governs run-path staging acceptance'
+
+mount() { printf '%s\n' "$*" >>"$test_tmp/mount.log"; }
+mkdir -p "$test_tmp/next/boot"
+reset_boot_bind_boot_readonly "$test_tmp/next"
+mapfile -t mount_calls <"$test_tmp/mount.log"
+[[ ${#mount_calls[@]} == 2 ]] || fail 'unexpected boot bind call count'
+[[ ${mount_calls[0]} == "--bind /boot $test_tmp/next/boot" ]] || fail 'live boot was not bind-mounted'
+[[ ${mount_calls[1]} == "-o remount,bind,ro $test_tmp/next/boot" ]] || fail 'private boot view was not made read-only'
+pass 'private boot view reuses the mounted VFAT without changing superblock state'

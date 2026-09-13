@@ -145,6 +145,17 @@ reset_boot_stage_path_valid() {
   [[ $(findmnt -rn -T "${stage%/*}" -o FSTYPE) == btrfs && $(findmnt -rn -T "${stage%/*}" -o UUID) == "$root_uuid" ]]
 }
 
+reset_boot_bind_boot_readonly() {
+  local root=${1%/}
+  [[ -n $root ]] || root=/
+  # The supported GRUB topology already has this VFAT mounted at /boot.
+  # A second device mount with different read-only state is rejected by the
+  # kernel. Give the private namespace a read-only bind view instead; this
+  # does not change the live /boot mount or the underlying superblock state.
+  mount --bind /boot "$root/boot" || return $?
+  mount -o remount,bind,ro "$root/boot"
+}
+
 reset_boot_prepare() {
   local root=$1 stage=$2 key_mode=$3
   [[ $key_mode == provision || $key_mode == owner ]] || return 1
@@ -172,7 +183,7 @@ reset_boot_generate_private() {
   kernel=$RESET_BOOT_KERNEL_FILE image=$RESET_BOOT_IMAGE
   cp -- "$RESET_BOOT_KERNEL_SOURCE" "$stage/files/$kernel" || return $?
   sha256sum "$RESET_BOOT_KERNEL_SOURCE" >"$stage/kernel-input" || return $?
-  mount -o ro "$RESET_BOOT_DEVICE" "$root/boot" || return $?
+  reset_boot_bind_boot_readonly "$root" || return $?
   chroot "$root" /usr/bin/env TMPDIR=/run/tmp TMP=/run/tmp TEMP=/run/tmp /usr/bin/mkinitcpio \
     --nopost -k "$RESET_BOOT_KERNEL" -g /run/initramfs.img || return $?
   mv "$stage/runtime/initramfs.img" "$stage/files/$image" || return $?
