@@ -2,7 +2,7 @@
 
 Apple Silicon installations use the regular Arch Linux ARM, Asahi Alarm, and Mac package repositories. The official `https://pkgs.omarchy.org/edge/$arch` repository has `Usage = Sync`, so it is refreshed but excluded from automatic package selection and upgrades.
 
-The installer, system updater, and pacman channel refresh explicitly select `omarchy/hyprland`, `omarchy/hyprtoolkit`, and `omarchy/hyprland-guiutils` alongside a full system upgrade. Aquamarine and other dependencies resolve from the regular repositories. Dependency failures stop the transaction; no packages are ignored or dependencies bypassed.
+The installer, system updater, and pacman channel refresh explicitly select `omarchy/hyprland`, `omarchy/hyprtoolkit`, and `omarchy/hyprland-guiutils` alongside a full system upgrade. Fresh defaults explicitly request `omarchy/asdcontrol` and `omarchy/tobi-try`, which are absent from the regular ARM repositories. Updates include those source-qualified targets only while the apps are installed, preserving intentional removals. Aquamarine and other dependencies resolve from the regular repositories. Dependency failures stop the transaction; no packages are ignored or dependencies bypassed.
 
 The shared policy lives in `install/helpers/arm-package-sources.sh`. Package signatures are required and the existing Omarchy signing key is imported by its full fingerprint. Repository configuration preserves other repositories and mirror choices, saving `/etc/pacman.conf.bak` when it changes.
 
@@ -29,6 +29,10 @@ Fresh preflight can initialize an ephemeral local signing key in its private key
 The captured core/system transaction is followed by the ordinary rolling default-package and optional AUR setup. A temporary `IgnorePkg` entry protects the published desktop pair during those later operations, and both package versions are checked after defaults and after system/user setup. Setup preserves the preflighted repository configuration; cleanup removes only the installer's temporary pin, before recording a factory snapshot on success. This does not freeze optional/default dependencies, so their resolved versions and any unavailable packages remain part of RC qualification.
 
 Without a channel argument or `OMARCHY_MIRROR`, the source installer retains its checkout-build behavior and legacy `/edge` repository default. Existing clients and 3-to-4 bootstraps are not silently redirected to an unpublished `/stable` lane.
+
+The ARM default name `nvim` maps to the real `neovim` package (also required by `omarchy-nvim`). `qemu-user-static-binfmt` is reported as unavailable: the current Arch Linux ARM QEMU build removes static binaries, and dynamic `qemu-user-binfmt` does not preserve foreign-root execution semantics. Existing static packages are not removed or replaced. Static cross-architecture execution remains a qualification gap.
+
+Earlier default installation attempts did not record durable failure receipts. A missing `asdcontrol` or `tobi-try` therefore cannot be distinguished from an intentional removal; no migration reinstalls absent optional apps. Users who want them can request `yay -S omarchy/asdcontrol omarchy/tobi-try`. Already installed copies receive the new source-selection behavior through the packaged updater on its next run.
 
 ## Recovering an install that predates this policy
 

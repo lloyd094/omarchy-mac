@@ -228,7 +228,7 @@ package_is_unavailable_here() {
 }
 
 install_default_package_set() {
-  local package skipped=() unbuildable=() attempt_unavailable=0
+  local package target skipped=() unbuildable=() attempt_unavailable=0
 
   load_unavailable_packages
   if should_attempt_unavailable; then
@@ -249,7 +249,8 @@ install_default_package_set() {
       unbuildable+=("$package")
       continue
     fi
-    yay -S --needed --noconfirm "$package" </dev/null || skipped+=("$package")
+    target=$(omarchy_arm_default_package_target "$package")
+    yay -S --needed --noconfirm "$target" </dev/null || skipped+=("$package")
   done < <(grep -vE '^\s*(#|$)' "$checkout/install/omarchy-base.packages")
 
   if (( ${#unbuildable[@]} )); then

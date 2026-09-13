@@ -10,13 +10,26 @@ omarchy_arm_package_targets() {
 # newer regular build cannot replace the selected stack in the same transaction.
 # Explicit targets still install normally (pacman's IgnorePkg prompt defaults yes).
 omarchy_arm_package_upgrade_args() {
-  local target names=()
-  while read -r target; do
-    names+=("${target#*/}")
-  done < <(omarchy_arm_package_targets)
+  local target package names=() targets=()
+  mapfile -t targets < <(omarchy_arm_package_targets)
+  # These defaults exist only in the explicit upstream repository. Continue
+  # updating installed copies, without reinstalling deliberately removed apps.
+  for package in asdcontrol tobi-try; do
+    if pacman --config "${OMARCHY_PACMAN_CONFIG:-/etc/pacman.conf}" -Q "$package" >/dev/null 2>&1; then
+      targets+=("omarchy/$package")
+    fi
+  done
+  for target in "${targets[@]}"; do names+=("${target#*/}"); done
   local IFS=,
-  printf '%s\n' --ignore "${names[*]}"
-  omarchy_arm_package_targets
+  printf '%s\n' --ignore "${names[*]}" "${targets[@]}"
+}
+
+omarchy_arm_default_package_target() {
+  case "$1" in
+    asdcontrol | tobi-try) printf 'omarchy/%s\n' "$1" ;;
+    nvim) printf '%s\n' neovim ;;
+    *) printf '%s\n' "$1" ;;
+  esac
 }
 
 omarchy_arm_package_is_selected() {

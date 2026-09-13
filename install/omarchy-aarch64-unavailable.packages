@@ -39,3 +39,8 @@ pinta
 # appimage variant does build here, so this is a naming problem rather than a
 # missing port: obsidian-appimage would work if it were asked for by name.
 obsidian
+
+# Arch Linux ARM explicitly removes the static QEMU build. Dynamic qemu-user
+# and qemu-user-binfmt are not replacements for static foreign-root execution.
+# Preserve any existing static installation; report this default as unavailable.
+qemu-user-static-binfmt
