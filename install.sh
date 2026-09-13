@@ -12,6 +12,9 @@ readonly checkout="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly package_output="$checkout/build-output"
 readonly asahi_alarm_key="12CE6799A94A3F1B5DDFFE88F576553597FB8FEB"
 source "$checkout/install/helpers/arm-package-sources.sh"
+source "$checkout/install/helpers/arm-channel.sh"
+install_channel="${OMARCHY_MIRROR:-}"
+channel_stage=""
 
 # gum is how the rest of Omarchy talks to people, but it arrives with the
 # omarchy package well into this script, so every helper falls back to plain
@@ -123,6 +126,10 @@ install_omarchy_packages() {
 
   # env-bootstrap is the single source of truth for OMARCHY_PATH and PATH, and
   # this shell started before the package existed.
+  load_installed_environment
+}
+
+load_installed_environment() {
   source /usr/share/omarchy/default/bash/env-bootstrap
 }
 
@@ -154,8 +161,8 @@ ensure_arm_package_repo() {
   if ! grep -q '^\[omarchy-aarch64\]' /etc/pacman.conf; then
     local block
     block=$(sed -n '/^\[omarchy-aarch64\]/,/^Server[[:space:]]*=/p' \
-      "$checkout/default/pacman/pacman-stable.conf")
-    [[ -n $block ]] || fail "default/pacman/pacman-stable.conf has no [omarchy-aarch64] section."
+      "$checkout/default/pacman/pacman-edge.conf")
+    [[ -n $block ]] || fail "default/pacman/pacman-edge.conf has no [omarchy-aarch64] section."
 
     log "Adding the Omarchy ARM package repo"
     printf '\n%s\n' "$block" | sudo tee -a /etc/pacman.conf >/dev/null
@@ -267,12 +274,18 @@ seed_user_defaults() {
 
 run_system_setup() {
   log "Running Omarchy system setup"
-  sudo omarchy-apply-system --install-user "$USER" --first-install
+  if [[ -n $install_channel ]]; then
+    sudo env OMARCHY_MIRROR="$install_channel" OMARCHY_PRESERVE_PACMAN_CONFIG=1 omarchy-apply-system --install-user "$USER" --first-install
+  else
+    sudo omarchy-apply-system --install-user "$USER" --first-install
+  fi
 
   # System setup restores pacman.conf and can introduce repositories absent
   # from the starting image. Trust their keys and refresh with a full upgrade
   # before user setup installs packages, retaining the explicit edge stack.
-  ensure_arm_package_repo
+  if [[ -z $install_channel ]]; then
+    ensure_arm_package_repo
+  fi
 
   log "Running Omarchy user setup"
   omarchy-provision-user --first-install
@@ -300,18 +313,86 @@ snapshot_factory_baseline() {
   sudo rmdir "$top"
 }
 
+parse_install_options() {
+  while (( $# )); do
+    case "$1" in
+      --channel)
+        (( $# >= 2 )) || fail "--channel needs stable, rc, or edge"
+        install_channel="$2"
+        shift 2
+        ;;
+      *) fail "Unknown installer argument: $1" ;;
+    esac
+  done
+  case "$install_channel" in "" | stable | rc | edge) ;; *) fail "Invalid channel: $install_channel" ;; esac
+}
+
+verify_published_pair() {
+  [[ -n $channel_stage ]] || return 0
+  local name expected actual
+  expected=$(<"$channel_stage/pair-version")
+  for name in omarchy omarchy-settings; do
+    actual=$(pacman -Q "$name") || return
+    [[ $actual == "$name $expected" ]] || fail "Setup changed the preflighted package pair: $actual (expected $expected)"
+  done
+}
+
+protect_published_pair() {
+  # Defaults and optional AUR setup remain rolling. Ignore the captured pair
+  # during that phase, including package helpers run by system/user setup.
+  awk '{ print; if ($0 ~ /^[[:space:]]*\[options\][[:space:]]*$/) print "IgnorePkg = omarchy omarchy-settings # omarchy-install-pair" }' /etc/pacman.conf >"$channel_stage/protected.conf"
+  sudo install -m 644 "$channel_stage/protected.conf" /etc/pacman.conf
+}
+
+unprotect_published_pair() {
+  if [[ -n $channel_stage && -f $channel_stage/protected.conf ]]; then
+    # Remove only our temporary pin, retaining any administrator changes.
+    sed '/^IgnorePkg = omarchy omarchy-settings # omarchy-install-pair$/d' /etc/pacman.conf >"$channel_stage/unpinned.conf"
+    sudo install -m 644 "$channel_stage/unpinned.conf" /etc/pacman.conf
+    rm "$channel_stage/protected.conf"
+  fi
+}
+
+cleanup_channel_install() {
+  if [[ -n $channel_stage ]]; then
+    unprotect_published_pair
+    omarchy_arm_channel_stage_remove "$channel_stage"
+  fi
+}
+
 main() {
+  parse_install_options "$@"
   check_preconditions
-  ensure_utf8_locale
-  ensure_arm_package_repo
-  ensure_gum
-  ensure_aur_helper
-  ensure_package_sources
-  build_omarchy_packages
-  install_omarchy_packages
+  if [[ -n $install_channel ]]; then
+    channel_stage=$(omarchy_arm_channel_stage_new)
+    trap cleanup_channel_install EXIT
+    # Availability, resolution and signature checks precede locale or system
+    # changes. Apply exactly the captured published pair and dependencies.
+    omarchy_arm_channel_prepare "$channel_stage" "$install_channel" fresh
+    ensure_utf8_locale
+    omarchy_arm_channel_apply_prepared "$channel_stage"
+    load_installed_environment
+    protect_published_pair
+    # Optional package setup uses the live keyring after the accepted core
+    # transaction. Establish the same declared stack signer there now.
+    omarchy_arm_prepare_package_sources
+    ensure_gum
+    ensure_aur_helper
+  else
+    ensure_utf8_locale
+    ensure_arm_package_repo
+    ensure_gum
+    ensure_aur_helper
+    ensure_package_sources
+    build_omarchy_packages
+    install_omarchy_packages
+  fi
   install_default_package_set
+  verify_published_pair
   seed_user_defaults
   run_system_setup
+  verify_published_pair
+  unprotect_published_pair
   snapshot_factory_baseline
 
   log "Install complete. Reboot to start Omarchy."

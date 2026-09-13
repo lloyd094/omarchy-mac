@@ -19,7 +19,7 @@ root = pathlib.Path(os.environ['CHANNEL_TEST_ROOT'])
 work = pathlib.Path(os.environ['CHANNEL_TEST_STORAGE'])
 lanes = work / 'lanes'
 guest = work / 'guest'
-for d in ['db/local', 'cache', 'etc', 'hooks', 'log']:
+for d in ['db/local', 'cache', 'etc', 'hooks', 'log', 'keyring']:
     (guest / d).mkdir(parents=True)
 (guest / 'db/local/ALPM_DB_VERSION').write_text('9\n')
 for d in ['stable', 'rc', 'edge', 'regular', 'graphics', 'baseline']:
@@ -58,6 +58,23 @@ for name in ['aquamarine', 'ordinary', 'newlib']:
 pkg('regular', 'new-widget', '2-1', 'replaces = old-widget', 'conflict = old-widget')
 run(['repo-add', str(lanes / 'regular/extra.db.tar.gz'), *map(str, (lanes / 'regular').glob('*.pkg.tar.zst'))])
 
+# A real local signing key verifies that preflight and final install can use
+# copied public trust without copying the source secret key or mutating it.
+# The runner maps this verified disk directory at /tmp too; use its shorter
+# alias so Unix agent socket names remain below sockaddr_un limits.
+keyring = pathlib.Path('/tmp') / work.name / 'guest/keyring'
+assert keyring.samefile(guest / 'keyring'), 'contained runner must bind its disk TMPDIR at /tmp'
+keyring.chmod(0o700)
+gpg = ['gpg', '--homedir', str(keyring), '--batch', '--pinentry-mode', 'loopback', '--passphrase', '']
+run([*gpg, '--quick-generate-key', 'Channel fixture <channel@fixture.invalid>', 'ed25519', 'sign', '0'])
+for lane in ['stable', 'rc', 'edge']:
+    archives = list((lanes / lane).glob('*.pkg.tar.zst'))
+    for archive in archives:
+        run([*gpg, '--detach-sign', str(archive)])
+    run(['repo-add', str(lanes / lane / 'omarchy-aarch64.db.tar.gz'), *map(str, archives)])
+run(['gpgconf', '--homedir', str(keyring), '--kill', 'gpg-agent'])
+key_files = {p.name: p.read_bytes() for p in keyring.iterdir() if p.is_file()}
+
 transport = work / 'transport.py'
 transport.write_text('''import os, pathlib, shutil, sys
 base = pathlib.Path(sys.argv[1]); url, dest = sys.argv[2:]
@@ -81,6 +98,7 @@ DBPath = {guest}/db
 CacheDir = {guest}/cache
 LogFile = {guest}/log/pacman.log
 HookDir = {guest}/hooks
+GPGDir = {keyring}
 Architecture = aarch64
 SigLevel = Never
 LocalFileSigLevel = Never
@@ -88,13 +106,16 @@ XferCommand = /usr/bin/python3 {transport} {lanes} %u %o
 [extra]
 Server = https://regular.invalid/$repo/$arch
 [omarchy-aarch64]
-SigLevel = Never
+SigLevel = Required DatabaseOptional
 Server = https://github.com/omarchy-mac/omarchy-pkgs-aarch64/releases/download/edge
 ''')
 pacman = ['pacman', '--config', str(config)]
 run([*pacman, '-U', '--noconfirm', *map(str, base)])
 run([*pacman, '-D', '--asdeps', 'aquamarine'])
 original = config.read_bytes()
+def sync_state():
+    return {p.relative_to(guest / 'db/sync').as_posix(): p.read_bytes() for p in (guest / 'db/sync').glob('**/*') if p.is_file()}
+original_sync = sync_state()
 stub = work / 'bin'; stub.mkdir()
 (stub / 'sudo').write_text('#!/bin/bash\nexec "$@"\n')
 (stub / 'sudo').chmod(0o755)
@@ -154,6 +175,7 @@ collision.write_text('administrator file\n')
 failure_output = channel('rc', False)
 assert config.read_bytes() == original and run([*pacman, '-Q']) == before, failure_output + '\nBEFORE:\n' + before + '\nAFTER:\n' + run([*pacman, '-Q'])
 assert collision.read_text() == 'administrator file\n'
+assert sync_state() == original_sync, 'failed transaction must restore preexisting sync databases\n' + failure_output
 collision.unlink()
 print('ok - a real file-conflict transaction failure preserves both packages and active configuration')
 
@@ -182,4 +204,26 @@ assert 'download/stable' in config.read_text()
 assert run([*pacman, '-Q', 'omarchy', 'omarchy-settings']).splitlines() == ['omarchy 4.0.2-2', 'omarchy-settings 4.0.2-2']
 assert 'ordinary 2-1' in run([*pacman, '-Q', 'ordinary'])
 print('ok - rc to stable downgrades only the explicit pair while retaining the upgraded distribution stack')
+assert all((keyring / name).read_bytes() == data for name, data in key_files.items())
+print('ok - signed package preflight and installation preserve original public trust and secret keys')
+
+# libalpm can return zero after a failed post-transaction hook. The hook runs
+# inside the synthetic RootDir; its intentionally absent executable is inert.
+(guest / 'hooks/99-fixture-fail.hook').write_text('''[Trigger]
+Operation = Upgrade
+Type = Package
+Target = omarchy
+[Action]
+Description = Fixture posttransaction failure
+When = PostTransaction
+Exec = /fixture-does-not-exist
+''')
+previous_config = config.read_bytes()
+previous_sync = sync_state()
+output = channel('rc', False)
+assert config.read_bytes() == previous_config
+assert sync_state() == previous_sync, 'hook failure must restore original lane sync databases'
+assert run([*pacman, '-Q', 'omarchy']).strip() == 'omarchy 4.0.3rc1-1'
+assert 'transaction/hook error' in output, output
+print('ok - posttransaction hook failure reports partial state and does not commit channel success')
 PY

@@ -48,6 +48,18 @@ for layout in custom-server include duplicate missing; do
 done
 pass 'custom and ambiguous ARM repository layouts fail without modification'
 
+printf '%s\n' '[options]' 'Architecture = aarch64' '[extra]' 'Server = https://regular.example/$arch' >"$test_tmp/fresh"
+cp "$test_tmp/fresh" "$test_tmp/fresh-before"
+omarchy_arm_channel_render "$test_tmp/fresh" rc "$test_tmp/fresh-rendered" fresh
+[[ $(omarchy_arm_channel_current "$test_tmp/fresh-rendered") == rc ]] || fail 'fresh candidate adds explicit RC lane'
+cmp "$test_tmp/fresh" "$test_tmp/fresh-before" || fail 'fresh render preserves active configuration'
+printf '%s\n' '[omarchy-aarch64]' 'Server = https://custom.example/repo' >"$test_tmp/hidden"
+printf 'Include = %s\n' "$test_tmp/hidden" >>"$test_tmp/fresh"
+if omarchy_arm_channel_render "$test_tmp/fresh" rc "$test_tmp/rejected" fresh >/dev/null 2>&1; then
+  fail 'fresh installer must not shadow a hidden custom ARM repository'
+fi
+pass 'fresh candidates add a missing lane but reject hidden custom repositories'
+
 printf '#!/bin/bash\necho aarch64\n' >"$test_tmp/bin/uname"
 cat >"$test_tmp/bin/omarchy-update" <<'SH'
 #!/bin/bash

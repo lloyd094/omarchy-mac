@@ -20,8 +20,17 @@ omarchy_arm_channel_current() {
 }
 
 omarchy_arm_channel_render() {
-  local config="$1" channel="$2" output="$3"
+  local config="$1" channel="$2" output="$3" allow_new="${4:-}"
   case "$channel" in stable | rc | edge) ;; *) echo "Invalid ARM package channel: $channel" >&2; return 1 ;; esac
+  if [[ $allow_new == "fresh" ]] && ! grep -qE '^[[:space:]]*\[omarchy-aarch64\]' "$config"; then
+    if pacman-conf --config "$config" --repo-list | grep -qxF omarchy-aarch64; then
+      echo "A managed ARM repository is hidden in an Include; configure its lane explicitly." >&2
+      return 1
+    fi
+    cat "$config" >"$output"
+    printf '\n[omarchy-aarch64]\nSigLevel = Optional TrustAll\nServer = https://github.com/omarchy-mac/omarchy-pkgs-aarch64/releases/download/%s\n' "$channel" >>"$output"
+    return
+  fi
   if ! omarchy_arm_channel_current "$config" >/dev/null; then
     echo "Cannot switch a custom or ambiguous ARM repository. Keep the current configuration and configure its lane explicitly." >&2
     return 1
@@ -33,31 +42,98 @@ omarchy_arm_channel_render() {
   ' "$config" >"$output"
 }
 
-# Called inside omarchy-update's lock/snapshot boundary. The installing
-# transaction keeps libalpm's sysupgrade/replacement/reason semantics, but uses
-# captured repository databases and verified archives instead of mutable feeds.
-omarchy_arm_channel_apply() (
-  set -euo pipefail
-  local channel="$1" config="${OMARCHY_PACMAN_CONFIG:-/etc/pacman.conf}"
-  local scratch="${TMPDIR:-/var/tmp}" stage dbpath repo name version filename hash size extra pair_version=""
-  local required available archive cache
-  local -a targets caches
+# Keep large captured transactions on persistent disk, independent of /tmp.
+omarchy_arm_channel_stage_new() {
+  local scratch="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/channels"
+  mkdir -p "$scratch" || return
   case $(findmnt -n -o FSTYPE -T "$scratch") in
-    "" | tmpfs | ramfs) echo "ARM channel staging needs a disk-backed temporary directory." >&2; return 1 ;;
+    "" | tmpfs | ramfs) echo "ARM channel staging needs a disk-backed cache directory." >&2; return 1 ;;
   esac
-  stage=$(mktemp -d "$scratch/omarchy-channel.XXXXXXXX")
-  trap 'sudo rm -rf -- "$stage"' EXIT
-  # The pacman downloader runs as DownloadUser and must read local repo files.
+  mktemp -d "$scratch/transaction.XXXXXXXX"
+}
+
+omarchy_arm_channel_stage_remove() {
+  local stage="$1"
+  # A private keyring may start its own agent; never address the host agent.
+  sudo gpgconf --homedir "$stage/keyring" --kill gpg-agent 2>/dev/null || true
+  sudo rm -rf -- "$stage/keyring/private-keys-v1.d"
+  if ! omarchy_arm_channel_restore_sync "$stage"; then
+    echo "Retaining transaction recovery files in $stage" >&2
+    return 1
+  fi
+  sudo rm -rf -- "$stage"
+}
+
+# The installing pacman must lock its real DBPath. If it fails after the
+# captured sync, compensate only our sync cache, under that same lock and only
+# if nobody has changed it since capture. Installed packages are not rolled back.
+omarchy_arm_channel_restore_sync() {
+  local stage="$1"
+  [[ -f $stage/restore-sync ]] || return 0
+  local dbpath
+  dbpath=$(pacman-conf --config "$stage/frozen.conf" DBPath) || return
+  sudo bash -euo pipefail -c '
+    dbpath="$1"; stage="$2"
+    if ! (set -C; : >"$dbpath/db.lck") 2>/dev/null; then
+      echo "Cannot restore channel sync cache while another pacman holds its lock." >&2
+      exit 1
+    fi
+    cleanup() { rm -f "$dbpath/db.lck"; }
+    trap cleanup EXIT
+    if ! diff -qr "$dbpath/sync" "$stage/applied-sync" >/dev/null; then
+      echo "Sync databases changed independently; preserving them and the recovery backup." >&2
+      exit 1
+    fi
+    rm -rf "$dbpath/sync"
+    if [[ -d $stage/previous-sync ]]; then
+      cp -a "$stage/previous-sync" "$dbpath/sync"
+    fi
+    rm "$stage/restore-sync"
+  ' bash "$dbpath" "$stage"
+}
+
+omarchy_arm_channel_key_fingerprints() {
+  sudo gpg --homedir "$1" --batch --with-colons --list-keys 2>/dev/null |
+    awk -F: '$1 == "fpr" { print $10 }' | sort
+}
+
+# Preflight has no installed-package/config/keyring side effects. The caller
+# retains this directory until applying or abandoning the captured transaction.
+omarchy_arm_channel_prepare() {
+  local stage="$1" channel="$2" allow_new="${3:-}"
+  local config="${OMARCHY_PACMAN_CONFIG:-/etc/pacman.conf}"
+  local dbpath repo name version filename hash size extra pair_version=""
+  local required available archive cache gpgdir keyfile
+  local -a targets=() caches=()
   chmod 755 "$stage"
   mkdir -m 755 "$stage/db" "$stage/cache" "$stage/repos"
   cp "$config" "$stage/original.conf"
-  omarchy_arm_channel_render "$config" "$channel" "$stage/lane.conf"
+  omarchy_arm_channel_render "$config" "$channel" "$stage/lane.conf" "$allow_new"
   omarchy_arm_render_package_sources "$stage/lane.conf" >"$stage/source.conf"
   pacman-conf --config "$stage/source.conf" >"$stage/resolved.conf"
   dbpath=$(pacman-conf --config "$stage/source.conf" DBPath)
   sudo cp -a "$dbpath/local" "$stage/db/local"
 
-  local -a probe=(--config "$stage/resolved.conf" --dbpath "$stage/db" --cachedir "$stage/cache" --logfile "$stage/preflight.log")
+  # Verification may import keys even during download-only. Give libalpm a
+  # private copy of public trust, never the live keyring or its secret keys.
+  gpgdir=$(pacman-conf --config "$stage/resolved.conf" GPGDir)
+  sudo install -d -m 700 "$stage/keyring"
+  for keyfile in pubring.gpg pubring.kbx trustdb.gpg gpg.conf; do
+    if sudo test -f "$gpgdir/$keyfile"; then
+      sudo cp -p "$gpgdir/$keyfile" "$stage/keyring/$keyfile"
+    fi
+  done
+  # Fresh bases may lack the declared upstream stack signer. Bootstrap only
+  # that exact fingerprint into private trust, using an ephemeral local signer.
+  local key="40DFB630FF42BCFFB047046CF0134EE680CAC571"
+  if [[ $allow_new == "fresh" ]] && ! sudo gpg --homedir "$stage/keyring" --batch --list-keys "$key" >/dev/null 2>&1; then
+    sudo pacman-key --gpgdir "$stage/keyring" --init
+    sudo pacman-key --gpgdir "$stage/keyring" --recv-keys "$key" --keyserver hkps://keys.openpgp.org
+    omarchy_arm_channel_key_fingerprints "$stage/keyring" | grep -qxF "$key" || return 1
+    sudo pacman-key --gpgdir "$stage/keyring" --lsign-key "$key"
+  fi
+  omarchy_arm_channel_key_fingerprints "$stage/keyring" >"$stage/keys-before"
+  local -a probe=(--config "$stage/resolved.conf" --dbpath "$stage/db" --cachedir "$stage/cache" --gpgdir "$stage/keyring" --logfile "$stage/preflight.log")
   sudo env OMARCHY_UPDATE_PACMAN=1 pacman "${probe[@]}" -Sy --noconfirm
   sudo pacman "${probe[@]}" -Sl omarchy-aarch64 >"$stage/lane-packages"
   for name in omarchy omarchy-settings; do
@@ -83,6 +159,11 @@ omarchy_arm_channel_apply() (
   # Download-only verifies the configured signature policy without installing
   # a keyring or changing any installed package. Missing trust fails here.
   sudo env OMARCHY_UPDATE_PACMAN=1 pacman "${probe[@]}" -Suw --needed --noconfirm --ask 4 "${targets[@]}"
+  omarchy_arm_channel_key_fingerprints "$stage/keyring" >"$stage/keys-after"
+  if ! cmp -s "$stage/keys-before" "$stage/keys-after"; then
+    echo "Preflight required an undeclared signing key. Current configuration and live keyring are unchanged." >&2
+    return 1
+  fi
   caches=("$stage/cache")
   while read -r cache; do caches+=("$cache"); done < <(pacman-conf --config "$stage/resolved.conf" CacheDir)
 
@@ -120,7 +201,8 @@ omarchy_arm_channel_apply() (
   # Flattened options retain the real root/db/keyring, Includes have already
   # been resolved, and every repository now has exactly one local server.
   # A custom transfer command must not turn file:// back into a network fetch.
-  awk -v base="$stage/repos" '
+  awk -v base="$stage/repos" -v keyring="$stage/keyring" '
+    /^[[:space:]]*GPGDir[[:space:]]*=/ { print "GPGDir = " keyring; next }
     /^[[:space:]]*(Server|CacheServer|XferCommand)[[:space:]]*=/ { next }
     /^\[/ {
       print
@@ -129,21 +211,49 @@ omarchy_arm_channel_apply() (
     }
     { print }
   ' "$stage/resolved.conf" >"$stage/frozen.conf"
+  printf '%s\n' "$config" >"$stage/config-path"
+  printf '%s\n' "$channel" >"$stage/channel"
+  printf '%s\n' "$pair_version" >"$stage/pair-version"
+  printf '%s\n' "${targets[@]}" >"$stage/targets"
+}
+
+# Called within the updater's existing lock/snapshot boundary, or by a fresh
+# installer after preflight. Preserve libalpm sysupgrade and replace semantics.
+omarchy_arm_channel_apply_prepared() {
+  local stage="$1" config channel pair_version dbpath sync_status=0
+  local format='%r %n %v %f %h %s'
+  local -a targets
+  config=$(<"$stage/config-path")
+  channel=$(<"$stage/channel")
+  pair_version=$(<"$stage/pair-version")
+  mapfile -t targets <"$stage/targets"
   if ! cmp -s "$config" "$stage/original.conf"; then
     echo "pacman.conf changed during channel preparation. Preserving it; retry after reviewing the change." >&2
     return 1
   fi
   # A different lane may have an equal or older database timestamp. Force the
   # captured database into the real sync cache before comparing transactions.
-  sudo env OMARCHY_UPDATE_PACMAN=1 pacman --config "$stage/frozen.conf" -Syy --noconfirm
+  dbpath=$(pacman-conf --config "$stage/frozen.conf" DBPath)
+  if [[ -d $dbpath/sync ]]; then
+    sudo cp -a "$dbpath/sync" "$stage/previous-sync"
+  fi
+  sudo env OMARCHY_UPDATE_PACMAN=1 pacman --config "$stage/frozen.conf" -Syy --noconfirm || sync_status=$?
+  sudo cp -a "$dbpath/sync" "$stage/applied-sync"
+  touch "$stage/restore-sync"
+  (( sync_status == 0 )) || return "$sync_status"
   sudo pacman --config "$stage/frozen.conf" -Sup --needed --noconfirm --ask 4 --print-format "$format" "${targets[@]}" >"$stage/actual"
   if ! diff -u "$stage/expected" "$stage/actual"; then
     echo "Installed package state changed during channel preparation. Retry; the active configuration is unchanged." >&2
     return 1
   fi
-  if ! sudo env OMARCHY_UPDATE_PACMAN=1 pacman --config "$stage/frozen.conf" -Syu --needed --noconfirm --ask 4 "${targets[@]}"; then
+  if ! sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman --config "$stage/frozen.conf" -Syu --needed --noconfirm --ask 4 "${targets[@]}" 2>&1 | tee "$stage/transaction-output"; then
     echo "Channel transaction failed; no new channel configuration was committed. Package hooks may have run; installed pair:" >&2
-    pacman -Q omarchy omarchy-settings >&2 || true
+    pacman --config "$stage/frozen.conf" -Q omarchy omarchy-settings >&2 || true
+    return 1
+  fi
+  # libalpm may exit zero after a failed post-transaction hook.
+  if grep -q '^error:' "$stage/transaction-output"; then
+    echo "Packages may be installed, but pacman reported a transaction/hook error. Channel configuration was not committed; inspect the output and installed state." >&2
     return 1
   fi
   if ! cmp -s "$config" "$stage/original.conf"; then
@@ -152,6 +262,16 @@ omarchy_arm_channel_apply() (
   fi
   sudo cp -p "$config" "$config.bak"
   sudo install -m 644 "$stage/source.conf" "$config"
+  rm "$stage/restore-sync"
   echo "ARM package channel is now $channel ($pair_version)."
   echo "The selected upstream graphics stack and distribution dependencies were resolved at transaction time."
+}
+
+omarchy_arm_channel_apply() (
+  set -euo pipefail
+  local stage
+  stage=$(omarchy_arm_channel_stage_new)
+  trap 'omarchy_arm_channel_stage_remove "$stage"' EXIT
+  omarchy_arm_channel_prepare "$stage" "$1"
+  omarchy_arm_channel_apply_prepared "$stage"
 )

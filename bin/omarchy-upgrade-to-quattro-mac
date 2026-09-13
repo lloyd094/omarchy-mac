@@ -173,8 +173,8 @@ ensure_arm_package_repo() {
   if ! grep -q '^\[omarchy-aarch64\]' /etc/pacman.conf; then
     local block
     block=$(sed -n '/^\[omarchy-aarch64\]/,/^Server[[:space:]]*=/p' \
-      "$checkout/default/pacman/pacman-stable.conf")
-    [[ -n $block ]] || fail "default/pacman/pacman-stable.conf has no [omarchy-aarch64] section."
+      "$checkout/default/pacman/pacman-edge.conf")
+    [[ -n $block ]] || fail "default/pacman/pacman-edge.conf has no [omarchy-aarch64] section."
 
     log "Adding the Omarchy ARM package repo"
     printf '\n%s\n' "$block" | sudo tee -a /etc/pacman.conf >/dev/null
