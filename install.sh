@@ -192,8 +192,8 @@ confirm() {
 
   if command -v gum >/dev/null 2>&1; then
     # --default=false to match the [y/N] fallback below: gum selects Yes
-    # otherwise, so Enter accepts -- and what this asks about is whether to
-    # spend three hours building packages that were measured to fail.
+    # otherwise, so Enter accepts an attempt at defaults whose current ARM
+    # installation and runtime behavior have not yet been qualified.
     gum confirm --default=false "$question" </dev/tty
   else
     local answer
@@ -202,19 +202,19 @@ confirm() {
   fi
 }
 
-# Default to skipping, because building these was measured to fail. Offer the
-# choice anyway: an AUR package can gain aarch64 support at any time, and a
-# stale entry here should cost a prompt rather than be permanently wrong.
+# Preserve default exclusions pending ARM qualification. Historical failures
+# do not establish current unavailability: repository packages or providers may
+# now exist, so retain an explicit opt-in attempt.
 should_attempt_unavailable() {
   (( ${#unavailable_packages[@]} )) || return 1
   [[ ${OMARCHY_TRY_UNAVAILABLE:-0} == "1" ]] && return 0
   [[ -r /dev/tty ]] || return 1
 
-  warn "No aarch64 build is known for: ${unavailable_packages[*]}"
-  echo "Building them took about 3 hours on a clean install and still failed."
-  echo "They may have gained ARM support since, so you can try."
+  warn "Excluded by default pending ARM qualification: ${unavailable_packages[*]}"
+  echo "Earlier attempts encountered long builds, missing targets, or incompatible dependencies."
+  echo "Packages or providers may now exist; availability alone does not establish Apple Silicon compatibility."
 
-  confirm "Try building them anyway?"
+  confirm "Try installing these packages anyway?"
 }
 
 package_is_unavailable_here() {
@@ -243,8 +243,8 @@ install_default_package_set() {
       pacman -Q "$package" >/dev/null || fail "Compatible package missing after system upgrade: $package"
       continue
     fi
-    # These compile a dependency chain for hours before failing an architecture
-    # check, so do not start them unless asked to.
+    # Keep unqualified defaults excluded unless explicitly requested, even
+    # where a package or provider is available in the current repositories.
     if (( ! attempt_unavailable )) && package_is_unavailable_here "$package"; then
       unbuildable+=("$package")
       continue
@@ -254,7 +254,7 @@ install_default_package_set() {
   done < <(grep -vE '^\s*(#|$)' "$checkout/install/omarchy-base.packages")
 
   if (( ${#unbuildable[@]} )); then
-    warn "Not attempted, no known aarch64 build: ${unbuildable[*]}"
+    warn "Not attempted (excluded pending ARM qualification): ${unbuildable[*]}"
     echo "Try one later with: yay -S <package>"
   fi
 
@@ -262,7 +262,7 @@ install_default_package_set() {
   yay -S --needed --noconfirm wf-recorder </dev/null || skipped+=("wf-recorder")
 
   if (( ${#skipped[@]} )); then
-    warn "Skipped packages with no aarch64 build: ${skipped[*]}"
+    warn "Could not install: ${skipped[*]}"
   fi
 }
 
