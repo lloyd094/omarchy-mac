@@ -58,6 +58,20 @@ pass 'release builds reject unversioned recipe inputs before staging'
 ) || fail 'prepared recipes contain the exact pinned fork keyring payload'
 pass 'prepared recipes carry exact fork-owned trust bytes'
 
+# The fork keyring is injected locally and deliberately absent from the pinned
+# upstream recipe checkout. Validate only after preparing the combined tree.
+(
+  source "$ROOT/build-packages.sh"
+  upstream="$ROOT/../omarchy-pkgs/pkgbuilds"
+  prepared="$work_dir/prepared-with-fork-keyring"
+  [[ ! -e $upstream/omarchy-mac-keyring ]]
+  if ( require_package_recipes "$upstream" >/dev/null 2>&1 ); then exit 1; fi
+
+  OMARCHY_ALLOW_CUSTOM_RECIPES=1 prepare_omarchy_recipes "$upstream" "$prepared" >/dev/null
+  require_package_recipes "$prepared/pkgbuilds"
+) || fail 'package validation must run against locally augmented recipes'
+pass 'local keyring recipe is accepted after recipe preparation'
+
 # Check Arch's interpreted metadata, not grep of PKGBUILD shell syntax.
 # The fixtures cover both common and architecture-specific build dependencies.
 (

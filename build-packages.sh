@@ -210,6 +210,14 @@ install_build_dependencies() {
   sudo pacman -S --needed --noconfirm "${missing[@]}"
 }
 
+require_package_recipes() {
+  local pkgbuild_source="$1" package
+
+  for package in "${packages[@]}"; do
+    [[ -d "$pkgbuild_source/$package" ]] || fail "$pkgbuild_source/$package is missing."
+  done
+}
+
 remove_old_packages() {
   local artifact
 
@@ -273,16 +281,13 @@ main() {
     fail "No omarchy-pkgs checkout found. Set OMARCHY_PKGS_PATH or clone it beside this repo."
   log "Using PKGBUILDs from $pkgbuild_source"
 
-  for package in "${packages[@]}"; do
-    [[ -d "$pkgbuild_source/$package" ]] || fail "$pkgbuild_source/$package is missing."
-  done
-
   # build_dir stays global: an EXIT trap runs after main's locals are gone, and
   # under set -u a local would abort the trap instead of cleaning up.
   build_dir="$(mktemp -d)"
   trap remove_build_dir EXIT
   prepare_omarchy_recipes "$pkgbuild_source" "$build_dir/recipes"
   pkgbuild_source="$build_dir/recipes/pkgbuilds"
+  require_package_recipes "$pkgbuild_source"
   install_build_dependencies "$pkgbuild_source"
 
   mkdir -p "$output_dir" "$source_cache"
