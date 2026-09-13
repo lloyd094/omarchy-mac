@@ -12,6 +12,7 @@ for dependency in absent snapper 'snapper>=0.12'; do
   case_dir="$work_dir/${dependency//[>=]/_}"
   mkdir -p "$case_dir/source/omarchy" "$case_dir/build" "$case_dir/output"
   cat >"$case_dir/source/omarchy/PKGBUILD" <<'PKGBUILD'
+pkgver=0.0.0
 pkgrel=1
 depends=(
   'gum'

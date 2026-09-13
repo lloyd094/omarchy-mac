@@ -3,8 +3,8 @@
 # Build the Omarchy packages for Apple Silicon from this checkout.
 #
 # omarchy, omarchy-settings, omarchy-keyring, and ttf-jetbrains-mono-nerd-basic
-# are all arch=any, so they need no architecture-specific build. The only Apple
-# Silicon delta is the limine bootloader stack, patched out below.
+# include architecture-specific settings and dependencies. Build on aarch64
+# using the pinned recipes and shared ARM overlay below.
 #
 # OMARCHY_PKGREL bumps pkgrel on omarchy and omarchy-settings only, so a Mac
 # hotfix can ship as 4.0.1-2 without waiting for an upstream 4.0.2 tag. Leave
@@ -14,6 +14,8 @@ set -euo pipefail
 
 readonly checkout="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly output_dir="${OMARCHY_PACKAGE_OUTPUT:-$checkout/build-output}"
+source "$checkout/build-inputs/prepare-recipes.sh"
+
 readonly source_cache="${OMARCHY_PACKAGE_SRCDEST:-${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-build/sources}"
 
 # Macs boot m1n1 -> u-boot -> GRUB, so limine is wrong here. Two of these have
@@ -59,6 +61,20 @@ find_omarchy_pkgs() {
     return 0
   done
   return 1
+}
+
+set_source_version() {
+  local pkgbuild="$1" version
+  version=$(<"$checkout/version")
+  [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(rc[1-9][0-9]*)?$ ]] ||
+    fail "Invalid source version: $version (use X.Y.Z or X.Y.ZrcN)"
+  grep -qE '^pkgver=' "$pkgbuild" || fail "no pkgver= in $pkgbuild"
+  if ! grep -Fxq "pkgver=$version" "$pkgbuild" && [[ -z ${OMARCHY_PKGREL:-} ]]; then
+    sed -i 's/^pkgrel=.*/pkgrel=1/' "$pkgbuild"
+  fi
+  # Local source overrides upstream's _commit. Its runtime version must also
+  # determine package metadata and the exact omarchy-settings dependency.
+  sed -i "s/^pkgver=.*/pkgver=$version/" "$pkgbuild"
 }
 
 set_pkgrel() {
@@ -132,6 +148,18 @@ keep_apple_silicon_mkinitcpio_drop_ins() {
     fail "could not keep /etc/mkinitcpio.conf.d in $pkgbuild"
   grep -qF 'rm -rf "$pkgdir/etc/limine-entry-tool.d"' "$pkgbuild" ||
     fail "lost the limine-entry-tool.d cleanup in $pkgbuild"
+
+  # These files now ship on ARM too. Pacman needs their hashes in backup=()
+  # to preserve local edits and offer changed defaults as .pacnew on upgrade.
+  cat >>"$pkgbuild" <<'BACKUP'
+
+if [[ $CARCH == aarch64 ]]; then
+  backup+=(
+    'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+    'etc/mkinitcpio.conf.d/thunderbolt_module.conf'
+  )
+fi
+BACKUP
 }
 
 # makepkg runs with --nodeps because the runtime dependencies include packages
@@ -141,12 +169,16 @@ install_build_dependencies() {
   local pkgbuild_source="$1" package
   local -a build_dependencies=()
 
+  local metadata
   for package in "${packages[@]}"; do
+    # makepkg evaluates arch-specific and computed dependency arrays. Parsing
+    # shell text loses inline entries, comments and makedepends_aarch64.
+    metadata=$(cd "$pkgbuild_source/$package" && OMARCHY_SRC="$checkout" makepkg --printsrcinfo) ||
+      fail "Could not read build dependencies for $package"
     while read -r dependency; do
       [[ -n $dependency ]] || continue
       build_dependencies+=("$dependency")
-    done < <(sed -n '/^makedepends=(/,/^)/p' "$pkgbuild_source/$package/PKGBUILD" |
-      sed '1d;$d' | tr -d "'\"" | tr -d ' ')
+    done < <(awk -v arch="$(uname -m)" '$1 == "makedepends" || $1 == "makedepends_" arch { print $3 }' <<<"$metadata")
   done
 
   (( ${#build_dependencies[@]} )) || return 0
@@ -154,7 +186,12 @@ install_build_dependencies() {
   # pacman -T reports only what is missing, so an already-equipped machine
   # needs no sudo at all, and repeated makedepends collapse.
   local -a missing=()
-  mapfile -t missing < <(pacman -T "${build_dependencies[@]}" || true)
+  local missing_output status=0
+  missing_output=$(pacman -T "${build_dependencies[@]}") || status=$?
+  (( status == 0 || status == 127 )) || fail "Could not query build dependencies (pacman status $status)"
+  if [[ -n $missing_output ]]; then
+    mapfile -t missing <<<"$missing_output"
+  fi
   (( ${#missing[@]} )) || return 0
 
   log "Installing build dependencies: ${missing[*]}"
@@ -190,14 +227,17 @@ build_package() {
   fi
   if [[ $package == "omarchy" || $package == "omarchy-settings" ]]; then
     set_pkgrel "$build_dir/$package/PKGBUILD"
+    set_source_version "$build_dir/$package/PKGBUILD"
   fi
+
+  sha256sum "$build_dir/$package/PKGBUILD" >>"$output_dir/build-inputs.txt"
 
   # SRCDEST caches downloaded sources outside the throwaway build directory, so
   # a rebuild does not re-fetch the 125 MB font archive.
   (
     cd "$build_dir/$package"
     SRCDEST="$source_cache" OMARCHY_SRC="$checkout" \
-      makepkg --force --noconfirm --nodeps --skipinteg
+      makepkg --force --noconfirm --nodeps
   )
 
   # A configured makepkg signer leaves detached .sig files beside the archive;
@@ -224,15 +264,18 @@ main() {
     [[ -d "$pkgbuild_source/$package" ]] || fail "$pkgbuild_source/$package is missing."
   done
 
-  install_build_dependencies "$pkgbuild_source"
-
   # build_dir stays global: an EXIT trap runs after main's locals are gone, and
   # under set -u a local would abort the trap instead of cleaning up.
   build_dir="$(mktemp -d)"
   trap remove_build_dir EXIT
+  prepare_omarchy_recipes "$pkgbuild_source" "$build_dir/recipes"
+  pkgbuild_source="$build_dir/recipes/pkgbuilds"
+  install_build_dependencies "$pkgbuild_source"
 
   mkdir -p "$output_dir" "$source_cache"
   remove_old_packages
+  cp "$build_dir/recipes/provenance" "$output_dir/build-inputs.txt"
+  printf '%s\n' "source_commit=$(git -C "$checkout" rev-parse HEAD)" "source_version=$(<"$checkout/version")" "source_dirty=$(git -C "$checkout" status --porcelain --untracked-files=all | wc -l)" >>"$output_dir/build-inputs.txt"
   for package in "${packages[@]}"; do
     build_package "$package" "$pkgbuild_source" "$build_dir"
   done

@@ -86,14 +86,20 @@ ensure_package_sources() {
   local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-build"
   local pkgs_checkout="$cache_dir/omarchy-pkgs"
 
-  if [[ -d $pkgs_checkout/.git ]]; then
-    log "Updating the PKGBUILD checkout"
-    git -C "$pkgs_checkout" pull --ff-only || warn "Could not update $pkgs_checkout; using it as is."
-  else
-    log "Cloning the PKGBUILD checkout"
+  local revision
+  revision=$(<"$checkout/build-inputs/omarchy-pkgs-revision")
+  [[ $revision =~ ^[0-9a-f]{40}$ ]] || fail "Invalid package recipe revision"
+  if [[ ! -d $pkgs_checkout/.git ]]; then
+    log "Cloning the pinned PKGBUILD checkout"
     mkdir -p "$cache_dir"
-    git clone --depth 1 https://github.com/omacom/omarchy-pkgs.git "$pkgs_checkout"
+    git clone https://github.com/omacom/omarchy-pkgs.git "$pkgs_checkout"
   fi
+  [[ -z $(git -C "$pkgs_checkout" status --porcelain --untracked-files=all) ]] ||
+    fail "Cached recipes have local changes: $pkgs_checkout"
+  if ! git -C "$pkgs_checkout" cat-file -e "$revision^{commit}" 2>/dev/null; then
+    git -C "$pkgs_checkout" fetch origin "$revision" || fail "Could not fetch pinned package recipes"
+  fi
+  git -C "$pkgs_checkout" checkout --detach "$revision" || fail "Could not select pinned package recipes"
 
   export OMARCHY_PKGS_PATH="$pkgs_checkout"
 }
