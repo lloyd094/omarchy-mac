@@ -51,7 +51,7 @@ run_case() {
 run_case --channel rc || fail 'published RC orchestration'
 [[ $(cat "$CALLS") == $'preconditions\nprepare rc fresh\nlocale\napply\nenvironment\nprotect\ntrust\ngum\naur\ndefaults\nseed\nsetup\nunprotect\nsnapshot\ncleanup' ]] || fail 'published preflight precedes mutations and never builds different bytes'
 pass 'explicit RC installs the preflighted pair and bypasses local builds'
-FAIL_AT='prepare rc fresh' run_case --channel rc && fail 'failed preflight must stop' 
+FAIL_AT='prepare rc fresh' run_case --channel rc && fail 'failed preflight must stop'
 [[ $(cat "$CALLS") == $'preconditions\nprepare rc fresh\ncleanup' ]] || fail 'failed preflight leaves locale and package state untouched'
 pass 'missing or invalid lane stops before system mutation'
 FAIL_AT=apply run_case --channel stable && fail 'failed captured transaction must stop'
