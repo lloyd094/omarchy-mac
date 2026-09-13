@@ -162,10 +162,19 @@ Recovery can automatically reattach history lost by an earlier restore only when
   cared about, so treat a backup as mandatory.
 - Only the busybox `encrypt` hook is wired up. An initramfs built around the
   systemd hooks (`sd-encrypt`) is rejected rather than half-configured.
-- On encrypted installs, `omarchy-system-factory-reset`'s provisioning-window
-  auto-unlock injects its kernel argument via Limine's entry tool, which does
-  not exist on the Mac's GRUB boot chain. The reset still works; the first
-  boot after it asks for the disk passphrase instead of unlocking itself.
+- Factory reset supports the existing Asahi GRUB layout with the ESP mounted at `/boot`, the selected factory root's packaged kernel image/modules and its standard default-image preset. It stages and verifies matching kernel, initramfs, GRUB configuration and Asahi boot bundle before selecting the new root. Other boot topologies, ambiguous kernels and custom active preset options need explicit support and are refused before reset preparation.
+
+## Factory reset and retained history
+
+`sudo omarchy-system-factory-reset` displays every subvolume path and UUID it intends to erase before the existing `reset` confirmation. This includes the displaced root, previous `@old-*`/`@omarchy-old-*` roots, `@fresh`, home/log, and every nested snapshot. Legacy names alone do not establish ownership: confirm only if every displayed identity belongs to the reset. Unlisted administrator subvolumes remain outside the reset. Mounted descendants, new nested subvolumes or changed UUIDs stop cleanup and keep provisioning blocked.
+
+The command delivers the current reset worker, owner setup and required helpers into the selected historical factory root. It removes old account credentials, account database backups and previous provisioning state before capturing a sanitized replacement `@factory`. The first boot erases only the confirmed inventory and recreates home/log with recorded identities; a partial failure retains its receipt for retry. This is deletion, not forensic secure erase.
+
+On encrypted GRUB installations the verified provisioning initramfs includes a temporary auto-unlock key. Owner setup rebuilds the boot files without that key, verifies the owner's LUKS slot, then retires the previous slots. An interrupted retirement is retried with the same confirmed owner disk password, even if the temporary key's slot has already been removed. Do not discard a pending re-key receipt or substitute a different owner password during that retry.
+
+Finish package updates, snapshots and other disk maintenance before reset. Current Omarchy updates share the reset exclusion lock; direct administrator boot/key/subvolume writes must remain stopped. A staged reset blocks further updates until its reboot and first-boot wipe complete. Ordinary GRUB publication/root exchange failures reconcile the exact original boot bytes, root and factory identities; failed staging remains available for inspection. Do not manually delete an interrupted journal or rename unfamiliar roots. A power loss across the separate boot-file/root renames can still require a rescue boot and receipt-based manual reconciliation; the journal is not a firmware rollback mechanism.
+
+The existing Limine generator remains the x86 route. Its generator/UKI behavior is separate from the Asahi GRUB qualification. A generic ARM GRUB layout can use an already maintained `vmlinuz-linux` alias of the matching packaged `Image` for component testing; that alias is not created by reset and does not establish support for stock `linux-aarch64` package-update synchronization. A stale active alias is refused.
 
 ## Testing changes to the migration
 
