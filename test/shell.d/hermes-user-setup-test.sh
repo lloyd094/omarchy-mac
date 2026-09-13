@@ -25,6 +25,7 @@ run_logged() {
 SH
 for command in xdg-user-dirs-update xdg-settings xdg-mime omarchy-refresh-applications; do
   printf '#!/bin/bash\nexit 0\n' >"$fixture/bin/$command"
+  chmod +x "$fixture/bin/$command"
 done
 cat >"$fixture/bin/omarchy-pkg-present" <<'SH'
 #!/bin/bash
@@ -35,7 +36,7 @@ cat >"$fixture/bin/mise" <<'SH'
 printf '%s\n' "$*" >>"$TEST_MISE_CALLS"
 [[ $1 != where ]]
 SH
-chmod +x "$fixture/bin/"*
+chmod +x "$fixture/bin/omarchy-pkg-present" "$fixture/bin/mise"
 
 export TEST_MISE_CALLS="$test_tmp/mise.calls"
 marker='# Written by omarchy-install-hermes-cli.'
