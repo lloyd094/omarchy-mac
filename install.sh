@@ -11,6 +11,7 @@ set -euo pipefail
 readonly checkout="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly package_output="$checkout/build-output"
 readonly asahi_alarm_key="12CE6799A94A3F1B5DDFFE88F576553597FB8FEB"
+readonly omarchy_mac_key="F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7"
 source "$checkout/install/helpers/arm-package-sources.sh"
 source "$checkout/install/helpers/arm-channel.sh"
 install_channel="${OMARCHY_MIRROR:-}"
@@ -152,6 +153,19 @@ ensure_asahi_alarm_keyring() {
   sudo pacman -Sy --needed --noconfirm asahi-alarm-keyring
 }
 
+ensure_omarchy_mac_keyring() {
+  local keyfile="$checkout/default/pacman/keyrings/omarchy-mac.gpg"
+  [[ -f $keyfile && ! -L $keyfile ]] || fail "Pinned Omarchy Mac signing key is missing or unsafe."
+
+  if ! sudo pacman-key --list-keys "$omarchy_mac_key" >/dev/null 2>&1; then
+    log "Importing the pinned Omarchy Mac package signing key"
+    sudo pacman-key --add "$keyfile"
+  fi
+  sudo pacman-key --finger "$omarchy_mac_key" | tr -d '[:space:]' | grep -qF "$omarchy_mac_key" ||
+    fail "The imported Omarchy Mac signing key has the wrong fingerprint."
+  sudo pacman-key --lsign-key "$omarchy_mac_key" >/dev/null
+}
+
 # Compared in bash rather than with grep against a process substitution, which
 # ugrep answers differently from GNU grep.
 # The shipped pacman.conf only lands during post-install, after the package set
@@ -169,6 +183,7 @@ ensure_arm_package_repo() {
   fi
 
   ensure_asahi_alarm_keyring
+  ensure_omarchy_mac_keyring
   omarchy_arm_prepare_package_sources
   local -a targets
   mapfile -t targets < <(omarchy_arm_package_upgrade_args)
@@ -367,6 +382,7 @@ main() {
   if [[ -n $install_channel ]]; then
     channel_stage=$(omarchy_arm_channel_stage_new)
     trap cleanup_channel_install EXIT
+    export OMARCHY_SIGNING_SOURCE="$checkout"
     # Availability, resolution and signature checks precede locale or system
     # changes. Apply exactly the captured published pair and dependencies.
     omarchy_arm_channel_prepare "$channel_stage" "$install_channel" fresh

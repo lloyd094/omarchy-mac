@@ -2,7 +2,7 @@
 
 # Build the Omarchy packages for Apple Silicon from this checkout.
 #
-# omarchy, omarchy-settings, omarchy-keyring, and ttf-jetbrains-mono-nerd-basic
+# omarchy, omarchy-settings, both keyrings, and ttf-jetbrains-mono-nerd-basic
 # include architecture-specific settings and dependencies. Build on aarch64
 # using the pinned recipes and shared ARM overlay below.
 #
@@ -29,6 +29,7 @@ readonly limine_dependencies=(
 
 readonly packages=(
   omarchy-keyring
+  omarchy-mac-keyring
   ttf-jetbrains-mono-nerd-basic
   omarchy-settings
   omarchy
@@ -117,6 +118,17 @@ ensure_snapper_dependency() {
   if ! sed -n '/^depends=(/,/^)/p' "$pkgbuild" |
     grep -qE "^[[:space:]]*['\"]snapper([<>=][^'\"]*)?['\"]([[:space:]]|$)"; then
     sed -i "/^depends=(/a\\  'snapper'" "$pkgbuild"
+  fi
+}
+
+ensure_omarchy_mac_keyring_dependency() {
+  local pkgbuild="$1"
+
+  grep -qx 'depends=(' "$pkgbuild" ||
+    fail "omarchy PKGBUILD no longer has the expected depends array: $pkgbuild"
+  if ! sed -n '/^depends=(/,/^)/p' "$pkgbuild" |
+    grep -qE "^[[:space:]]*['\"]omarchy-mac-keyring([<>=][^'\"]*)?['\"]([[:space:]]|$)"; then
+    sed -i "/^depends=(/a\\  'omarchy-mac-keyring'" "$pkgbuild"
   fi
 }
 
@@ -221,6 +233,7 @@ build_package() {
   if [[ $package == "omarchy" ]]; then
     strip_limine_dependencies "$build_dir/$package/PKGBUILD"
     ensure_snapper_dependency "$build_dir/$package/PKGBUILD"
+    ensure_omarchy_mac_keyring_dependency "$build_dir/$package/PKGBUILD"
   fi
   if [[ $package == "omarchy-settings" ]]; then
     keep_apple_silicon_mkinitcpio_drop_ins "$build_dir/$package/PKGBUILD"

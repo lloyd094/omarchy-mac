@@ -12,6 +12,7 @@ PY
 cat >"$work/driver" <<'DRIVER'
 set -euo pipefail
 source "$FUNCTIONS"
+checkout="$TEST_ROOT"
 install_channel="${CHANNEL:-}"
 channel_stage=""
 log() { :; }
@@ -40,7 +41,7 @@ snapshot_factory_baseline() { step snapshot; }
 pacman() { echo "$2 ${PAIR_VERSION:-4.0.3rc1-1}"; }
 main "$@"
 DRIVER
-export FUNCTIONS="$work/functions" STAGE="$work/stage" CALLS="$work/calls"
+export FUNCTIONS="$work/functions" STAGE="$work/stage" CALLS="$work/calls" TEST_ROOT="$ROOT"
 mkdir "$STAGE"
 run_case() {
   : >"$CALLS"

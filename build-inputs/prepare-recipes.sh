@@ -38,6 +38,11 @@ prepare_omarchy_recipes() {
     echo 'Package recipes no longer match the ARM first-run overlay; review them before building.' >&2
     return 1
   fi
+  cp -a "$inputs_dir/omarchy-mac-keyring" "$destination/pkgbuilds/" || return 1
+  cp -a "$inputs_dir/../default/pacman/keyrings/omarchy-mac.gpg" \
+    "$inputs_dir/../default/pacman/keyrings/omarchy-mac-trusted" \
+    "$inputs_dir/../default/pacman/keyrings/omarchy-mac-revoked" \
+    "$destination/pkgbuilds/omarchy-mac-keyring/" || return 1
   printf '%s\n' "recipe_commit=$actual" "recipe_pin=$revision" "custom_recipes=${OMARCHY_ALLOW_CUSTOM_RECIPES:-0}" >"$destination/provenance"
   (cd "$destination" && find pkgbuilds -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) >>"$destination/provenance"
 }

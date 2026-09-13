@@ -23,6 +23,20 @@ RECIPE
 ) || fail 'local source version controls package metadata and exact pair dependency'
 pass 'source version replaces stale recipe version and preserves explicit pkgrel'
 
+(
+  source "$ROOT/build-packages.sh"
+  cat >"$work_dir/omarchy-PKGBUILD" <<'RECIPE'
+depends=(
+  'omarchy-settings'
+)
+RECIPE
+  ensure_omarchy_mac_keyring_dependency "$work_dir/omarchy-PKGBUILD"
+  ensure_omarchy_mac_keyring_dependency "$work_dir/omarchy-PKGBUILD"
+  [[ $(grep -c "^[[:space:]]*'omarchy-mac-keyring'$" "$work_dir/omarchy-PKGBUILD") == 1 ]]
+  [[ " ${packages[*]} " == *' omarchy-mac-keyring '* ]]
+) || fail 'omarchy package depends exactly once on the fork keyring'
+pass 'build includes the fork keyring and makes it an Omarchy dependency'
+
 # Reject dirty/wrong default sources before touching an existing output.
 (
   source "$ROOT/build-inputs/prepare-recipes.sh"
@@ -31,6 +45,18 @@ pass 'source version replaces stale recipe version and preserves explicit pkgrel
   [[ ! -e $work_dir/rejected ]]
 ) || fail 'unversioned recipes require explicit custom-build opt-in'
 pass 'release builds reject unversioned recipe inputs before staging'
+
+(
+  source "$ROOT/build-inputs/prepare-recipes.sh"
+  OMARCHY_ALLOW_CUSTOM_RECIPES=1 prepare_omarchy_recipes \
+    "$ROOT/../omarchy-pkgs/pkgbuilds" "$work_dir/with-keyring" >/dev/null
+  keyring="$work_dir/with-keyring/pkgbuilds/omarchy-mac-keyring"
+  [[ -f $keyring/PKGBUILD && -f $keyring/omarchy-mac-keyring.install ]]
+  cmp "$ROOT/default/pacman/keyrings/omarchy-mac.gpg" "$keyring/omarchy-mac.gpg"
+  cmp "$ROOT/default/pacman/keyrings/omarchy-mac-trusted" "$keyring/omarchy-mac-trusted"
+  [[ ! -s $keyring/omarchy-mac-revoked ]]
+) || fail 'prepared recipes contain the exact pinned fork keyring payload'
+pass 'prepared recipes carry exact fork-owned trust bytes'
 
 # Check Arch's interpreted metadata, not grep of PKGBUILD shell syntax.
 # The fixtures cover both common and architecture-specific build dependencies.

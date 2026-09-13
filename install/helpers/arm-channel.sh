@@ -42,6 +42,93 @@ omarchy_arm_channel_render() {
   ' "$config" >"$output"
 }
 
+omarchy_arm_signature_policy_render() {
+  local config="$1" policy="$2" output="$3"
+  [[ $policy == 'PackageRequired DatabaseOptional TrustedOnly' ||
+    $policy == 'PackageRequired DatabaseRequired TrustedOnly' ]] || {
+    echo "Invalid ARM signature policy: $policy" >&2
+    return 1
+  }
+  omarchy_arm_channel_current "$config" >/dev/null || {
+    echo "Cannot change signature policy for a custom or ambiguous ARM repository." >&2
+    return 1
+  }
+  awk -v policy="$policy" '
+    /^[[:space:]]*\[/ {
+      if (selected && !wrote) print "SigLevel = " policy
+      selected = ($0 ~ /^[[:space:]]*\[omarchy-aarch64\][[:space:]]*(#.*)?$/)
+      wrote = 0
+      print
+      next
+    }
+    selected && /^[[:space:]]*SigLevel[[:space:]]*=/ {
+      if (!wrote) print "SigLevel = " policy
+      wrote = 1
+      next
+    }
+    { print }
+    END { if (selected && !wrote) print "SigLevel = " policy }
+  ' "$config" >"$output"
+}
+
+omarchy_arm_signature_policy_assert() {
+  local config="$1" expected="$2" actual
+  actual=$(pacman-conf --config "$config" --repo omarchy-aarch64 SigLevel | LC_ALL=C sort) || return 1
+  case "$expected" in
+    'PackageRequired DatabaseOptional TrustedOnly')
+      [[ $actual == $'DatabaseOptional\nDatabaseTrustedOnly\nPackageRequired\nPackageTrustedOnly' ]]
+      ;;
+    'PackageRequired DatabaseRequired TrustedOnly')
+      [[ $actual == $'DatabaseRequired\nDatabaseTrustedOnly\nPackageRequired\nPackageTrustedOnly' ]]
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+omarchy_arm_signature_policy_apply() {
+  local config="$1" policy="$2" rendered
+  [[ -f $config && ! -L $config ]] || {
+    echo "Pacman configuration must be a regular non-symlink: $config" >&2
+    return 1
+  }
+  rendered=$(mktemp)
+  if ! omarchy_arm_signature_policy_render "$config" "$policy" "$rendered" ||
+    ! omarchy_arm_signature_policy_assert "$rendered" "$policy"; then
+    rm -f -- "$rendered"
+    return 1
+  fi
+  if ! sudo bash -euo pipefail -c '
+    config="$1" rendered="$2" stage=""
+    cleanup() { [[ -z $stage ]] || rm -f -- "$stage"; }
+    trap cleanup EXIT
+    [[ -f $config && ! -L $config ]] || exit 1
+    stage=$(mktemp "${config}.omarchy-signature.XXXXXXXX")
+    cat "$rendered" >"$stage"
+    mapfile -t actual < <(pacman-conf --config "$stage" --repo omarchy-aarch64 SigLevel | LC_ALL=C sort)
+    [[ ${#actual[@]} == 4 ]]
+    case "$3" in
+      "PackageRequired DatabaseOptional TrustedOnly")
+        [[ ${actual[0]} == DatabaseOptional && ${actual[1]} == DatabaseTrustedOnly &&
+          ${actual[2]} == PackageRequired && ${actual[3]} == PackageTrustedOnly ]]
+        ;;
+      "PackageRequired DatabaseRequired TrustedOnly")
+        [[ ${actual[0]} == DatabaseRequired && ${actual[1]} == DatabaseTrustedOnly &&
+          ${actual[2]} == PackageRequired && ${actual[3]} == PackageTrustedOnly ]]
+        ;;
+      *) exit 1 ;;
+    esac
+    chmod --reference="$config" "$stage"
+    chown --reference="$config" "$stage"
+    mv -fT -- "$stage" "$config"
+    stage=""
+  ' bash "$config" "$rendered" "$policy"; then
+    rm -f -- "$rendered"
+    return 1
+  fi
+  rm -f -- "$rendered"
+  omarchy_arm_signature_policy_assert "$config" "$policy"
+}
+
 # DownloadUser must traverse the whole path for downloads and frozen file://
 # repositories. A private HOME/cache cannot provide that contract. Allocate only
 # our new child under verified root-controlled persistent parents; never loosen
@@ -150,15 +237,32 @@ omarchy_arm_channel_prepare() {
       sudo cp -p "$gpgdir/$keyfile" "$stage/keyring/$keyfile"
     fi
   done
+  # The copied ring deliberately excludes host secret keys. Give this private
+  # ring its own disposable local-signing key before trusting pinned signers.
+  sudo pacman-key --gpgdir "$stage/keyring" --init
   # Fresh bases may lack the declared upstream stack signer. Bootstrap only
   # that exact fingerprint into private trust, using an ephemeral local signer.
   local key="40DFB630FF42BCFFB047046CF0134EE680CAC571"
   if [[ $allow_new == "fresh" ]] && ! sudo gpg --homedir "$stage/keyring" --batch --list-keys "$key" >/dev/null 2>&1; then
-    sudo pacman-key --gpgdir "$stage/keyring" --init
     sudo pacman-key --gpgdir "$stage/keyring" --recv-keys "$key" --keyserver hkps://keys.openpgp.org
     omarchy_arm_channel_key_fingerprints "$stage/keyring" | grep -qxF "$key" || return 1
+  fi
+  if [[ $allow_new == "fresh" ]]; then
     sudo pacman-key --gpgdir "$stage/keyring" --lsign-key "$key"
   fi
+  # The fork key is source-pinned. Import exactly those committed bytes rather
+  # than consulting a keyserver, then verify the full primary fingerprint.
+  local fork_key="F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7"
+  local fork_keyfile="${OMARCHY_SIGNING_SOURCE:-$OMARCHY_PATH}/default/pacman/keyrings/omarchy-mac.gpg"
+  if ! sudo gpg --homedir "$stage/keyring" --batch --list-keys "$fork_key" >/dev/null 2>&1; then
+    [[ -f $fork_keyfile && ! -L $fork_keyfile ]] || {
+      echo "Pinned Omarchy Mac signing key is missing or unsafe: $fork_keyfile" >&2
+      return 1
+    }
+    sudo pacman-key --gpgdir "$stage/keyring" --add "$fork_keyfile"
+    omarchy_arm_channel_key_fingerprints "$stage/keyring" | grep -qxF "$fork_key" || return 1
+  fi
+  sudo pacman-key --gpgdir "$stage/keyring" --lsign-key "$fork_key"
   omarchy_arm_channel_key_fingerprints "$stage/keyring" >"$stage/keys-before"
   local -a probe=(--config "$stage/resolved.conf" --dbpath "$stage/db" --cachedir "$stage/cache" --gpgdir "$stage/keyring" --logfile "$stage/preflight.log")
   sudo env OMARCHY_UPDATE_PACMAN=1 pacman "${probe[@]}" -Sy --noconfirm
