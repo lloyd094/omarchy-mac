@@ -208,7 +208,8 @@ backend_repair() {
   [[ $parent =~ ^[a-fA-F0-9-]{36}$ ]] || { backend_error "Missing backend with no source snapshot identity; inspect retained roots manually"; return 1; }
   local -A matches=()
   for candidate in "$BACKEND_TOP"/@old-*/.snapshots; do
-    backend_plain_dir "${candidate%/.snapshots}" && backend_plain_dir "$candidate" && backend_is_volume "$candidate" || continue
+    backend_plain_dir "${candidate%/.snapshots}" && backend_is_volume "${candidate%/.snapshots}" &&
+      backend_plain_dir "$candidate" && backend_is_volume "$candidate" || continue
     identity=$(backend_require_uuid "$candidate") || return $?
     for detail in "$candidate"/[0-9]*/snapshot; do
       backend_plain_dir "${detail%/snapshot}" && backend_plain_dir "$detail" || continue

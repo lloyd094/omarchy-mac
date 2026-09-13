@@ -107,15 +107,16 @@ backend_restore @factory 123
 [[ ! -e $BACKEND_TOP/@/etc/snapper/configs/root && $(backend_uuid "$BACKEND_TOP/@/.snapshots") == "$HISTORY_UUID" ]] || fail 'baseline preserves history without inventing configuration'
 pass 'baseline without Snapper config remains supported'
 
-for kind in proven ambiguous unmatched nonempty symlink; do
+for kind in proven ambiguous unmatched nonempty symlink plain-container; do
   new_fixture "repair-$kind"
-  mkdir "$BACKEND_TOP/@old-100"
+  fixture_volume "$BACKEND_TOP/@old-100" "$NEW_UUID"
   "$real_mv" "$BACKEND_TOP/@/.snapshots" "$BACKEND_TOP/@old-100/.snapshots"
   mkdir "$BACKEND_TOP/@/.snapshots"
   echo "$SNAPSHOT_UUID" >"$BACKEND_TOP/@/.parent"
   case "$kind" in
     ambiguous) cp -a "$BACKEND_TOP/@old-100" "$BACKEND_TOP/@old-200"; echo "$NEW_UUID" >"$BACKEND_TOP/@old-200/.snapshots/.uuid";;
     unmatched) echo "$NEW_UUID" >"$BACKEND_TOP/@/.parent";;
+    plain-container) rm "$BACKEND_TOP/@old-100/.uuid";;
     nonempty) touch "$BACKEND_TOP/@/.snapshots/keep";;
     symlink) rmdir "$BACKEND_TOP/@/.snapshots"; ln -s /unrelated "$BACKEND_TOP/@/.snapshots";;
   esac
