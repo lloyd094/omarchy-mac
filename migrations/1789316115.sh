@@ -1,6 +1,6 @@
 echo "Trust packages signed by Omarchy Mac"
 
-readonly omarchy_mac_signing_key='F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7'
+readonly omarchy_mac_signing_key='FBD6874D423C418DDB6D143EECE19CDDE306DBD2'
 
 # The package is a dependency of omarchy, but keep this self-repairing for a
 # partial/manual upgrade. Do not weaken the repository policy to fetch it.

@@ -30,14 +30,36 @@ pass 'source version replaces stale recipe version and preserves explicit pkgrel
   cat >"$work_dir/omarchy-PKGBUILD" <<'RECIPE'
 depends=(
   'omarchy-settings'
+  'omarchy-mac-keyring'
 )
 RECIPE
   ensure_omarchy_mac_keyring_dependency "$work_dir/omarchy-PKGBUILD"
   ensure_omarchy_mac_keyring_dependency "$work_dir/omarchy-PKGBUILD"
-  [[ $(grep -c "^[[:space:]]*'omarchy-mac-keyring'$" "$work_dir/omarchy-PKGBUILD") == 1 ]]
+  [[ $(grep -c "^[[:space:]]*'omarchy-mac-keyring>=20260914-2'$" "$work_dir/omarchy-PKGBUILD") == 1 ]]
   [[ " ${packages[*]} " == *' omarchy-mac-keyring '* ]]
+  source "$work_dir/omarchy-PKGBUILD"
+  [[ $(vercmp 20260913-1 "${depends[1]#*>=}") == -1 ]]
+  [[ $(vercmp 20260914-2 "${depends[1]#*>=}") == 0 ]]
 ) || fail 'omarchy package depends exactly once on the fork keyring'
 pass 'build includes the fork keyring and makes it an Omarchy dependency'
+
+(
+  source "$ROOT/build-packages.sh"
+  for requirement in omarchy-mac-keyring 'omarchy-mac-keyring>=20260913-1' 'omarchy-mac-keyring>=20260915-1'; do
+    printf "depends=(\n  'before' '%s' 'after' # preserved comment\n)\n" "$requirement" >"$work_dir/shared-line"
+    ensure_omarchy_mac_keyring_dependency "$work_dir/shared-line"
+    cp "$work_dir/shared-line" "$work_dir/once"
+    ensure_omarchy_mac_keyring_dependency "$work_dir/shared-line"
+    cmp "$work_dir/once" "$work_dir/shared-line"
+    source "$work_dir/shared-line"
+    [[ ${depends[0]} == before && ${depends[2]} == after && ${#depends[@]} == 3 ]]
+    expected='omarchy-mac-keyring>=20260914-2'
+    [[ $requirement != 'omarchy-mac-keyring>=20260915-1' ]] || expected=$requirement
+    [[ ${depends[1]} == "$expected" ]]
+    grep -qF '# preserved comment' "$work_dir/shared-line"
+  done
+) || fail 'keyring transition must preserve adjacent dependencies and stronger existing bounds'
+pass 'keyring dependency normalization preserves shared lines and stronger version requirements'
 
 # Reject dirty/wrong default sources before touching an existing output.
 (
