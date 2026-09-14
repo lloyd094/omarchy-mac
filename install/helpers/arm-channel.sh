@@ -215,25 +215,18 @@ omarchy_arm_channel_key_fingerprints() {
 # retains this directory until applying or abandoning the captured transaction.
 # Trust the pinned new primary only inside the private transaction keyring.
 omarchy_arm_channel_trust_fork() {
-  local keyring="$1" fork_key import_needed=0
+  local keyring="$1"
   local active_key="FBD6874D423C418DDB6D143EECE19CDDE306DBD2"
   local fork_keyfile="${OMARCHY_SIGNING_SOURCE:-$OMARCHY_PATH}/default/pacman/keyrings/omarchy-mac.gpg"
-  for fork_key in "$active_key"; do
-    if ! sudo gpg --homedir "$keyring" --batch --list-keys "$fork_key" >/dev/null 2>&1; then
-      import_needed=1
-    fi
-  done
-  if (( import_needed )); then
+  if ! sudo gpg --homedir "$keyring" --batch --list-keys "$active_key" >/dev/null 2>&1; then
     [[ -f $fork_keyfile && ! -L $fork_keyfile ]] || {
       echo "Pinned Omarchy Mac signing key is missing or unsafe: $fork_keyfile" >&2
       return 1
     }
     sudo pacman-key --gpgdir "$keyring" --add "$fork_keyfile" || return 1
   fi
-  for fork_key in "$active_key"; do
-    omarchy_arm_channel_key_fingerprints "$keyring" | grep -qxF "$fork_key" || return 1
-    sudo pacman-key --gpgdir "$keyring" --lsign-key "$fork_key" || return 1
-  done
+  omarchy_arm_channel_key_fingerprints "$keyring" | grep -qxF "$active_key" || return 1
+  sudo pacman-key --gpgdir "$keyring" --lsign-key "$active_key" || return 1
 }
 
 omarchy_arm_channel_prepare() {
