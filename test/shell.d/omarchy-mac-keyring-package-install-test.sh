@@ -8,6 +8,27 @@ if [[ ${OMARCHY_RUN_NATIVE_KEYRING_TEST:-0} != 1 ]]; then
   exit 0
 fi
 for tool in bwrap makepkg pacman gpg findmnt; do require_command "$tool"; done
+bwrap_namespace_args=(--unshare-all)
+case ${OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK:-0} in
+  0) ;;
+  1)
+    [[ -r /proc/net/dev ]] || fail 'private caller network state is unavailable'
+    private_loopback=0
+    while IFS= read -r network_device; do
+      [[ $network_device == *:* ]] || continue
+      interface=${network_device%%:*}
+      interface=${interface//[[:space:]]/}
+      if [[ $interface == lo ]]; then
+        private_loopback=1
+      else
+        fail "private caller network exposes non-loopback interface: $interface"
+      fi
+    done </proc/net/dev
+    (( private_loopback )) || fail 'private caller network must expose loopback'
+    bwrap_namespace_args+=(--share-net)
+    ;;
+  *) fail 'OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK must be 0 or 1' ;;
+esac
 scratch_parent=${OMARCHY_TEST_TMPDIR:-${TMPDIR:-/var/tmp}}
 case $(findmnt -n -o FSTYPE -T "$scratch_parent") in
   ''|tmpfs|ramfs) fail 'native keyring test requires disk-backed scratch' ;;
@@ -91,9 +112,11 @@ trusted "$key"
 trusted "$other"
 printf 'ok - actual 20260914-1 to -2 package upgrade restores new trust and preserves existing old and unrelated trust\n'
 INNER
-# No host home, /etc, /var, device tree, sockets or network are exposed.
+# No host home, /etc, /var, device tree or sockets are exposed. Direct runs
+# receive a new bwrap network namespace. The hosted runner reuses its nspawn
+# namespace only after the check above proves it contains loopback alone.
 # All writable paths including /tmp live under verified disk-backed scratch.
-bwrap --unshare-all --die-with-parent --new-session --uid 0 --gid 0 \
+bwrap "${bwrap_namespace_args[@]}" --die-with-parent --new-session --uid 0 --gid 0 \
   --bind "$work/root" / --ro-bind /usr/bin /usr/bin --ro-bind /usr/lib /usr/lib \
   --ro-bind /usr/share/makepkg /usr/share/makepkg \
   --symlink usr/bin /bin --symlink usr/bin /sbin --symlink usr/lib /lib \

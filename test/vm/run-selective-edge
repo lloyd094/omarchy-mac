@@ -224,7 +224,8 @@ if [[ $CHECK_KEYRING == "1" ]]; then
   # its cached base predates this test. Package tests run without networking.
   nspawn pacman -S --needed --noconfirm bubblewrap
   nspawn --private-network --user="$GUEST_USER" --chdir=/src/omarchy \
-    env OMARCHY_RUN_NATIVE_KEYRING_TEST=1 TMPDIR=/var/tmp TMP=/var/tmp TEMP=/var/tmp \
+    env OMARCHY_RUN_NATIVE_KEYRING_TEST=1 OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK=1 \
+    TMPDIR=/var/tmp TMP=/var/tmp TEMP=/var/tmp \
     bash test/shell.d/omarchy-mac-keyring-package-install-test.sh \
     2>&1 | tee "$WORK/logs/keyring-package.log"
 fi

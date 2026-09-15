@@ -31,6 +31,14 @@ checkout = next(step for step in job['steps'] if step.get('uses', '').startswith
 assert checkout['with'] == {'persist-credentials': 'false'}, 'use the default merge ref without stored credentials'
 assert not any('actions/cache@' in step.get('uses', '') for step in job['steps'])
 assert not (root / '.github/workflows/install-vm-selective-edge.yml').exists()
+harness = (root / 'test/vm/run-selective-edge').read_text()
+private_keyring_call = re.search(
+    r'nspawn --private-network[^\n]*\\\n'
+    r'\s+env OMARCHY_RUN_NATIVE_KEYRING_TEST=1 OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK=1',
+    harness,
+)
+assert private_keyring_call, 'native keyring test may reuse only nspawn private networking'
+assert harness.count('OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK=1') == 1
 install_step = next(step for step in job['steps'] if 'bash ./test/vm/run-selective-edge' in step.get('run', ''))
 install_env = {**job['env'], **install_step.get('env', {})}
 for key in ('OMARCHY_INSTALL_VM_PACKAGE_SOURCES', 'OMARCHY_INSTALL_VM_IDEMPOTENCY', 'OMARCHY_INSTALL_VM_KEYRING'):

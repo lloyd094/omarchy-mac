@@ -44,22 +44,47 @@ RECIPE
 pass 'build includes the fork keyring and makes it an Omarchy dependency'
 
 (
-  source "$ROOT/build-packages.sh"
-  for requirement in omarchy-mac-keyring 'omarchy-mac-keyring>=20260913-1' 'omarchy-mac-keyring>=20260915-1'; do
-    printf "depends=(\n  'before' '%s' 'after' # preserved comment\n)\n" "$requirement" >"$work_dir/shared-line"
-    ensure_omarchy_mac_keyring_dependency "$work_dir/shared-line"
-    cp "$work_dir/shared-line" "$work_dir/once"
-    ensure_omarchy_mac_keyring_dependency "$work_dir/shared-line"
-    cmp "$work_dir/once" "$work_dir/shared-line"
-    source "$work_dir/shared-line"
-    [[ ${depends[0]} == before && ${depends[2]} == after && ${#depends[@]} == 3 ]]
+  source "$ROOT/build-packages.sh" || exit 1
+  for requirement in \
+    omarchy-mac-keyring \
+    'omarchy-mac-keyring>=20260913-1' \
+    'omarchy-mac-keyring>=20260915-1' \
+    'omarchy-mac-keyring>20260913-1' \
+    'omarchy-mac-keyring>20260915-1' \
+    'omarchy-mac-keyring=20260914-2' \
+    'omarchy-mac-keyring=20260915-1'; do
+    printf "depends=(\n  'before' '%s' 'after' # preserved comment\n)\n" "$requirement" >"$work_dir/shared-line" || exit 1
+    ensure_omarchy_mac_keyring_dependency "$work_dir/shared-line" || exit 1
+    cp "$work_dir/shared-line" "$work_dir/once" || exit 1
+    ensure_omarchy_mac_keyring_dependency "$work_dir/shared-line" || exit 1
+    cmp "$work_dir/once" "$work_dir/shared-line" || exit 1
+    source "$work_dir/shared-line" || exit 1
+    [[ ${depends[0]} == before && ${depends[2]} == after && ${#depends[@]} == 3 ]] || exit 1
     expected='omarchy-mac-keyring>=20260914-2'
-    [[ $requirement != 'omarchy-mac-keyring>=20260915-1' ]] || expected=$requirement
-    [[ ${depends[1]} == "$expected" ]]
-    grep -qF '# preserved comment' "$work_dir/shared-line"
+    case $requirement in
+      'omarchy-mac-keyring>=20260915-1'|'omarchy-mac-keyring>20260915-1'|'omarchy-mac-keyring=20260914-2'|'omarchy-mac-keyring=20260915-1')
+        expected=$requirement
+        ;;
+    esac
+    [[ ${depends[1]} == "$expected" ]] || exit 1
+    grep -qF '# preserved comment' "$work_dir/shared-line" || exit 1
   done
 ) || fail 'keyring transition must preserve adjacent dependencies and stronger existing bounds'
 pass 'keyring dependency normalization preserves shared lines and stronger version requirements'
+
+(
+  source "$ROOT/build-packages.sh"
+  for requirement in \
+    'omarchy-mac-keyring=20260913-1' \
+    'omarchy-mac-keyring<20260914-2' \
+    'omarchy-mac-keyring<=20260914-2'; do
+    printf "depends=(\n  '%s'\n)\n" "$requirement" >"$work_dir/rejected-keyring-bound"
+    if ( ensure_omarchy_mac_keyring_dependency "$work_dir/rejected-keyring-bound" 2>/dev/null ); then
+      exit 1
+    fi
+  done
+) || fail 'stale exact pins and upper bounds must fail closed'
+pass 'keyring dependency normalization rejects stale exact pins and upper bounds'
 
 # Reject dirty/wrong default sources before touching an existing output.
 (
@@ -71,14 +96,14 @@ pass 'keyring dependency normalization preserves shared lines and stronger versi
 pass 'release builds reject unversioned recipe inputs before staging'
 
 (
-  source "$ROOT/build-inputs/prepare-recipes.sh"
+  source "$ROOT/build-inputs/prepare-recipes.sh" || exit 1
   OMARCHY_ALLOW_CUSTOM_RECIPES=1 prepare_omarchy_recipes \
-    "$recipe_source" "$work_dir/with-keyring" >/dev/null
+    "$recipe_source" "$work_dir/with-keyring" >/dev/null || exit 1
   keyring="$work_dir/with-keyring/pkgbuilds/omarchy-mac-keyring"
-  [[ -f $keyring/PKGBUILD && -f $keyring/omarchy-mac-keyring.install ]]
-  cmp "$ROOT/default/pacman/keyrings/omarchy-mac.gpg" "$keyring/omarchy-mac.gpg"
-  cmp "$ROOT/default/pacman/keyrings/omarchy-mac-trusted" "$keyring/omarchy-mac-trusted"
-  [[ ! -s $keyring/omarchy-mac-revoked ]]
+  [[ -f $keyring/PKGBUILD && -f $keyring/omarchy-mac-keyring.install ]] || exit 1
+  cmp "$ROOT/default/pacman/keyrings/omarchy-mac.gpg" "$keyring/omarchy-mac.gpg" || exit 1
+  cmp "$ROOT/default/pacman/keyrings/omarchy-mac-trusted" "$keyring/omarchy-mac-trusted" || exit 1
+  [[ ! -s $keyring/omarchy-mac-revoked ]] || exit 1
 ) || fail 'prepared recipes contain the exact pinned fork keyring payload'
 pass 'prepared recipes carry exact fork-owned trust bytes'
 
