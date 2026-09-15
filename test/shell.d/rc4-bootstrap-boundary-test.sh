@@ -7,6 +7,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 [[ $(cat "$ROOT/version") == 4.0.3rc4 ]] || fail 'bootstrap source version is not RC4'
 [[ ! -e $ROOT/migrations/1789317000.sh ]] || fail 'RC5 strict migration leaked into RC4'
+[[ ! -e $ROOT/migrations/1789390468.sh ]] || fail 'redundant transition migration remains in RC4'
 for policy in 'Optional TrustAll' 'PackageRequired DatabaseRequired TrustedOnly'; do
   cat >"$test_tmp/config" <<CONF
 [options]
@@ -46,15 +47,15 @@ omarchy-pkg-missing() { return 1; }
 omarchy-notification-dismiss() { :; }
 export -f sudo pacman omarchy-pkg-missing omarchy-notification-dismiss
 mkdir -p "$test_tmp/source/migrations" "$test_tmp/markers"
-for name in 1789316115 1789390468 1789407944; do
+for name in 1789316115 1789407944; do
   cp "$ROOT/migrations/$name.sh" "$test_tmp/source/migrations/"
 done
 OMARCHY_PATH="$test_tmp/source" OMARCHY_MIGRATION_STATE="$test_tmp/markers" bash "$ROOT/bin/omarchy-migrate" >/dev/null
-for name in 1789316115 1789390468 1789407944; do
+for name in 1789316115 1789407944; do
   [[ -f $test_tmp/markers/$name.sh ]] || fail "$name did not complete"
 done
-[[ $(grep -c '^pacman-key --populate omarchy-mac$' "$TEST_CALLS") == 3 ]] || fail 'not all trust stages populated'
-[[ $(wc -l <"$TEST_CALLS") == 6 ]] || fail 'unexpected privileged operation'
+[[ $(grep -c '^pacman-key --populate omarchy-mac$' "$TEST_CALLS") == 2 ]] || fail 'not all trust stages populated'
+[[ $(wc -l <"$TEST_CALLS") == 4 ]] || fail 'unexpected privileged operation'
 : >"$TEST_CALLS"
 OMARCHY_PATH="$test_tmp/source" OMARCHY_MIGRATION_STATE="$test_tmp/markers" bash "$ROOT/bin/omarchy-migrate" >/dev/null
 [[ ! -s $TEST_CALLS ]] || fail 'completed bootstrap reran'

@@ -9,55 +9,7 @@ old_key=F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7
 new_key=FBD6874D423C418DDB6D143EECE19CDDE306DBD2
 export TEST_OLD_KEY="$old_key" TEST_NEW_KEY="$new_key"
 
-# Reject every privileged operation except the explicitly modeled trust calls.
-sudo() {
-  printf '%s\n' "$*" >>"$TEST_TRUST_CALLS"
-  if [[ $* == 'pacman-key --populate omarchy-mac' ]]; then
-    return "${TEST_POPULATE_FAILURE:-0}"
-  elif [[ $1 == pacman-key && $2 == --finger && $# == 3 ]]; then
-    [[ $3 != "${TEST_MISSING_KEY:-}" ]] || return 1
-    printf '%s\n' "$3"
-  else
-    return 99
-  fi
-}
-omarchy-pkg-missing() { return "${TEST_PACKAGE_PRESENT:-1}"; }
-omarchy-notification-dismiss() { :; }
-export -f sudo omarchy-pkg-missing omarchy-notification-dismiss
-
-mkdir -p "$test_tmp/source/migrations" "$test_tmp/markers"
-for name in 1789316115 1789390468; do
-  cp "$ROOT/migrations/$name.sh" "$test_tmp/source/migrations/"
-done
-touch "$test_tmp/markers/1789316115.sh" "$test_tmp/markers/1789317000.sh"
-export OMARCHY_MIGRATION_STATE="$test_tmp/markers"
-OMARCHY_PATH="$test_tmp/source" bash "$ROOT/bin/omarchy-migrate" >/dev/null
-[[ -f $OMARCHY_MIGRATION_STATE/1789390468.sh ]] || fail 'successor marker missing'
-[[ $(cat "$TEST_TRUST_CALLS") == "pacman-key --populate omarchy-mac"$'\n'"pacman-key --finger $new_key" ]] ||
-  fail 'completed old migrations must stay skipped and only the new key must be checked'
-: >"$TEST_TRUST_CALLS"
-OMARCHY_PATH="$test_tmp/source" bash "$ROOT/bin/omarchy-migrate" >/dev/null
-[[ ! -s $TEST_TRUST_CALLS ]] || fail 'completed successor ran again'
-pass 'existing completed migrations stay skipped while successor establishes new trust without requiring the old key'
-
-# Failure leaves the new migration pending and never changes repository policy.
-for failure in new populate package; do
-  mkdir "$test_tmp/markers-$failure"
-  touch "$test_tmp/markers-$failure/1789316115.sh" "$test_tmp/markers-$failure/1789317000.sh"
-  export TEST_MISSING_KEY='' TEST_POPULATE_FAILURE=0 TEST_PACKAGE_PRESENT=1
-  case "$failure" in
-    new) TEST_MISSING_KEY="$new_key" ;;
-    populate) TEST_POPULATE_FAILURE=1 ;;
-    package) TEST_PACKAGE_PRESENT=0 ;;
-  esac
-  if OMARCHY_PATH="$test_tmp/source" OMARCHY_MIGRATION_STATE="$test_tmp/markers-$failure" bash "$ROOT/bin/omarchy-migrate" >"$test_tmp/rejected" 2>&1; then
-    fail "$failure trust failure must stop migration"
-  fi
-  [[ ! -e $test_tmp/markers-$failure/1789390468.sh ]] || fail 'failed successor was marked complete'
-done
-unset TEST_MISSING_KEY TEST_POPULATE_FAILURE TEST_PACKAGE_PRESENT
-pass 'missing package, missing new key and population failure leave successor pending'
-
+# Migration queue coverage lives in the migration and successor suites.
 source "$ROOT/install/helpers/arm-channel.sh"
 omarchy_arm_channel_key_fingerprints() { printf '%s\n' "${fixture_keys[@]}"; }
 sudo() {

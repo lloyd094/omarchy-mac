@@ -8,7 +8,7 @@ export TEST_CALLS="$test_tmp/calls"
 new_key=FBD6874D423C418DDB6D143EECE19CDDE306DBD2
 export TEST_NEW_KEY="$new_key"
 mkdir -p "$test_tmp/source/migrations"
-for name in 1789316115 1789390468 1789407944; do
+for name in 1789316115 1789407944; do
   cp "$ROOT/migrations/$name.sh" "$test_tmp/source/migrations/"
 done
 pacman() {
@@ -32,6 +32,8 @@ export -f pacman sudo omarchy-notification-dismiss
 for scenario in current newer missing older populate fingerprint; do
   markers="$test_tmp/$scenario"
   mkdir "$markers"
+  # Obsolete development markers must not prevent the retained successor.
+  # This models marker handling only, not installing unsigned RC4 under strict policy.
   touch "$markers/1789316115.sh" "$markers/1789317000.sh" "$markers/1789390468.sh"
   export TEST_VERSION=20260914-2 TEST_POPULATE_FAILURE=0 TEST_MISSING_KEY=0
   case "$scenario" in
@@ -52,6 +54,14 @@ for scenario in current newer missing older populate fingerprint; do
   else
     [[ $scenario != current && $scenario != newer ]] || fail "$scenario failed" "$(cat "$test_tmp/result")"
     [[ ! -f $markers/1789407944.sh ]] || fail 'failed successor marked complete'
+    case "$scenario" in
+      older) expected_error='20260914-2 or newer is required' ;;
+      missing) expected_error='Install the reviewed Omarchy Mac keyring package first' ;;
+      populate) expected_error='Could not populate Omarchy Mac signing trust' ;;
+      fingerprint) expected_error='is missing after keyring population' ;;
+    esac
+    grep -qF "$expected_error" "$test_tmp/result" || fail "$scenario has no useful diagnostic"
+    if grep -qF 'can only `return' "$test_tmp/result"; then fail 'top-level return error'; fi
     if [[ $scenario == older || $scenario == missing ]]; then
       [[ ! -s $TEST_CALLS ]] || fail 'rejected package still touched trust'
     fi

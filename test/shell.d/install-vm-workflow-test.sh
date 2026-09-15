@@ -33,11 +33,11 @@ assert not any('actions/cache@' in step.get('uses', '') for step in job['steps']
 assert not (root / '.github/workflows/install-vm-selective-edge.yml').exists()
 install_step = next(step for step in job['steps'] if 'bash ./test/vm/run-selective-edge' in step.get('run', ''))
 install_env = {**job['env'], **install_step.get('env', {})}
-for key in ('OMARCHY_INSTALL_VM_PACKAGE_SOURCES', 'OMARCHY_INSTALL_VM_IDEMPOTENCY'):
+for key in ('OMARCHY_INSTALL_VM_PACKAGE_SOURCES', 'OMARCHY_INSTALL_VM_IDEMPOTENCY', 'OMARCHY_INSTALL_VM_KEYRING'):
     assert install_env[key] == '1', f'{key} must be enabled'
 for key in ('OMARCHY_INSTALL_VM_WORK', 'OMARCHY_INSTALL_VM_CACHE'):
     assert 'github.run_id' in install_env[key] and 'github.run_attempt' in install_env[key]
-print('ok - every PR gets isolated ARM install coverage with both validation modes')
+print('ok - every PR gets isolated ARM install coverage with package-source, repeat-install and native keyring validation')
 
 run = install_step['run']
 preserved = re.search(r'--preserve-env=([^\s]+)', run).group(1).split(',')
@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory() as temp:
     (cwd / 'bin/sudo').write_text('#!/bin/bash\nshift\nexec "$@"\n')
     (cwd / 'bin/sudo').chmod(0o755)
     (cwd / 'test/vm/run-selective-edge').write_text('''#!/bin/bash
-[[ $OMARCHY_INSTALL_VM_PACKAGE_SOURCES == 1 && $OMARCHY_INSTALL_VM_IDEMPOTENCY == 1 ]] || exit 99
+[[ $OMARCHY_INSTALL_VM_PACKAGE_SOURCES == 1 && $OMARCHY_INSTALL_VM_IDEMPOTENCY == 1 && $OMARCHY_INSTALL_VM_KEYRING == 1 ]] || exit 99
 rm -rf "$OMARCHY_INSTALL_VM_WORK/logs"
 mkdir -p "$OMARCHY_INSTALL_VM_WORK/logs"
 echo 'harness output before exit'

@@ -13,7 +13,12 @@ if (( comparison < 0 )); then
   exit 1
 fi
 
-sudo pacman-key --populate omarchy-mac
+sudo pacman-key --populate omarchy-mac || {
+  echo "Could not populate Omarchy Mac signing trust; this migration remains pending." >&2
+  exit 1
+}
 omarchy_mac_signing_key=FBD6874D423C418DDB6D143EECE19CDDE306DBD2
-sudo pacman-key --finger "$omarchy_mac_signing_key" |
-  tr -d '[:space:]' | grep -qF "$omarchy_mac_signing_key"
+if ! sudo pacman-key --finger "$omarchy_mac_signing_key" | tr -d '[:space:]' | grep -qF "$omarchy_mac_signing_key"; then
+  echo "The required Omarchy Mac signing primary $omarchy_mac_signing_key is missing after keyring population." >&2
+  exit 1
+fi

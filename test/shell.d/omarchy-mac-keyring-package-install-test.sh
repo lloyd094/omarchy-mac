@@ -8,7 +8,7 @@ if [[ ${OMARCHY_RUN_NATIVE_KEYRING_TEST:-0} != 1 ]]; then
   exit 0
 fi
 for tool in bwrap makepkg pacman gpg findmnt; do require_command "$tool"; done
-scratch_parent=${TMPDIR:-/home/naeem/.cache/codex/tmp}
+scratch_parent=${OMARCHY_TEST_TMPDIR:-${TMPDIR:-/var/tmp}}
 case $(findmnt -n -o FSTYPE -T "$scratch_parent") in
   ''|tmpfs|ramfs) fail 'native keyring test requires disk-backed scratch' ;;
 esac
@@ -25,15 +25,12 @@ cp "$ROOT/default/pacman/keyrings/"* "$work/build/"
 packages=("$work/build/"*.pkg.tar.*)
 [[ ${#packages[@]} == 1 ]] || fail 'exactly one keyring package was built'
 cp "${packages[0]}" "$work/keyring.pkg.tar.zst"
-# Freeze the reviewed -1 baseline so committing the cleanup does not change it.
-baseline=61e7f31a3b47608325998cad5a1e8912f559e7cb
-# Only public package sources are read; no owner key material.
+# Committed public-only fixture works in shallow checkouts and source archives.
+baseline="$ROOT/test/fixtures/omarchy-mac-keyring-20260914-1"
+(cd "$baseline" && sha256sum --check SHA256SUMS) || fail 'previous public fixture checksums'
 mkdir "$work/build-previous"
-for name in PKGBUILD omarchy-mac-keyring.install; do
-  git -C "$ROOT" show "$baseline:build-inputs/omarchy-mac-keyring/$name" >"$work/build-previous/$name"
-done
-for name in omarchy-mac.gpg omarchy-mac-trusted omarchy-mac-revoked; do
-  git -C "$ROOT" show "$baseline:default/pacman/keyrings/$name" >"$work/build-previous/$name"
+for name in PKGBUILD omarchy-mac-keyring.install omarchy-mac.gpg omarchy-mac-trusted omarchy-mac-revoked; do
+  cp "$baseline/$name" "$work/build-previous/$name"
 done
 (cd "$work/build-previous" && makepkg --nodeps --nosign --nocheck >"$work/build-previous.log" 2>&1) || {
   cat "$work/build-previous.log" >&2; fail 'previous committed keyring package builds';

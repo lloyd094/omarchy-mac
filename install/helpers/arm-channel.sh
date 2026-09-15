@@ -211,8 +211,6 @@ omarchy_arm_channel_key_fingerprints() {
     awk -F: '$1 == "fpr" { print $10 }' | sort
 }
 
-# Preflight has no installed-package/config/keyring side effects. The caller
-# retains this directory until applying or abandoning the captured transaction.
 # Trust the pinned new primary only inside the private transaction keyring.
 omarchy_arm_channel_trust_fork() {
   local keyring="$1"
@@ -229,6 +227,8 @@ omarchy_arm_channel_trust_fork() {
   sudo pacman-key --gpgdir "$keyring" --lsign-key "$active_key" || return 1
 }
 
+# Preflight has no installed-package/config/keyring side effects. The caller
+# retains this directory until applying or abandoning the captured transaction.
 omarchy_arm_channel_prepare() {
   local stage="$1" channel="$2" allow_new="${3:-}"
   local config="${OMARCHY_PACMAN_CONFIG:-/etc/pacman.conf}"

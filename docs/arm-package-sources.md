@@ -22,6 +22,16 @@ The persistent configuration is committed only after successful package installa
 
 This freezes one switch transaction, not future distribution upgrades. Arch Linux ARM, Asahi and the explicitly selected upstream graphics stack still resolve according to their rolling policies on the next update. Record their resolved versions when qualifying an RC; a different resolved stack needs new compatibility evidence. Captured repositories use a task directory beneath `${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/channels`, require disk-backed storage with sufficient free space, and are removed after the transaction. Existing package caches are reused without deleting their archives.
 
+## RC4 trust bootstrap qualification
+
+The primary changed before signing activation to finalize signing-key management; this is housekeeping, not a compromise response. The package ships only the new primary and an empty `omarchy-mac-revoked` file. Population does not remove previously installed keys: a host that already trusted the old primary retains that trust, while a fresh host receives only the new fork primary. No migration deletes or revokes old or unrelated trust.
+
+Publish the reviewed `omarchy-mac-keyring` package at `20260914-2` or newer with the RC4 package pair before asking clients to run this source's migrations. Both the pending bootstrap migration and its successor require that installed version. A source/manual update ahead of package publication stops with an explanatory error and remains pending; it must not skip the failed migration or weaken signature policy to continue.
+
+Before RC4 publication, qualify the actual artifacts on a fresh base and an existing installation. Include a real prior-keyring upgrade and verify that the new primary becomes trusted, old and unrelated installed trust survives, completed migration markers stay skipped, and pending markers appear only after successful trust population. Hosted native package tests cover disposable package hooks and trust; they do not replace physical Mac installation and upgrade qualification.
+
+A development host that already ran the later strict-signing migration cannot install unsigned RC4 under `PackageRequired DatabaseRequired TrustedOnly`. A migration-marker fixture does not prove that transaction works. Use a clean disposable baseline with the supported RC4 policy for the unsigned canary; do not automatically reset a host's stricter policy or delete its migration markers. Qualify strict signing separately with the signed candidate.
+
 ## Fresh Apple Silicon installation
 
 `./install.sh --channel rc` (or `OMARCHY_MIRROR=rc ./install.sh`) installs the published lane's captured `omarchy`/`omarchy-settings` pair. It verifies availability, resolves dependencies and downloads under the configured signature policy before changing locale, packages or active repository configuration. If the base has no managed ARM section, preflight adds one only to its candidate; custom or hidden managed sections must be configured explicitly. The rc4 bootstrap retains the existing `Optional TrustAll` fork policy because its archive and database are intentionally unsigned. This is the final use of that trust model. The following signed RC requires trusted package and database signatures. Required upstream graphics signatures remain required throughout.

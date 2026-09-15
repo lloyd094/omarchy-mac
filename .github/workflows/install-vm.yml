@@ -30,6 +30,7 @@ jobs:
       OMARCHY_INSTALL_VM_WORK: /var/tmp/omarchy-install-${{ github.run_id }}-${{ github.run_attempt }}
       OMARCHY_INSTALL_VM_PACKAGE_SOURCES: '1'
       OMARCHY_INSTALL_VM_IDEMPOTENCY: '1'
+      OMARCHY_INSTALL_VM_KEYRING: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,7 +82,7 @@ jobs:
         run: |
           mkdir -p "$OMARCHY_INSTALL_VM_WORK/logs"
           set +e
-          sudo --preserve-env=HOME,OMARCHY_PKGS_PATH,OMARCHY_INSTALL_VM_WORK,OMARCHY_INSTALL_VM_CACHE,OMARCHY_INSTALL_VM_PACKAGE_SOURCES,OMARCHY_INSTALL_VM_IDEMPOTENCY \
+          sudo --preserve-env=HOME,OMARCHY_PKGS_PATH,OMARCHY_INSTALL_VM_WORK,OMARCHY_INSTALL_VM_CACHE,OMARCHY_INSTALL_VM_PACKAGE_SOURCES,OMARCHY_INSTALL_VM_IDEMPOTENCY,OMARCHY_INSTALL_VM_KEYRING \
             bash ./test/vm/run-selective-edge 2>&1 | tee "$RUNNER_TEMP/omarchy-harness.log"
           status=${PIPESTATUS[0]}
           set -e
