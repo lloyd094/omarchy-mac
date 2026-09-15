@@ -9,6 +9,9 @@ if [[ ${OMARCHY_RUN_NATIVE_KEYRING_TEST:-0} != 1 ]]; then
 fi
 for tool in bwrap makepkg pacman gpg findmnt; do require_command "$tool"; done
 bwrap_namespace_args=(--unshare-all)
+bwrap_command=(bwrap)
+cleanup_command=(rm -rf --)
+hosted_private_boundary=0
 case ${OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK:-0} in
   0) ;;
   1)
@@ -25,7 +28,12 @@ case ${OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK:-0} in
       fi
     done </proc/net/dev
     (( private_loopback )) || fail 'private caller network must expose loopback'
+    require_command sudo
+    sudo -n true || fail 'hosted native keyring test requires passwordless guest sudo'
+    bwrap_command=(sudo -n bwrap)
+    cleanup_command=(sudo -n rm -rf --)
     bwrap_namespace_args+=(--share-net)
+    hosted_private_boundary=1
     ;;
   *) fail 'OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK must be 0 or 1' ;;
 esac
@@ -34,7 +42,8 @@ case $(findmnt -n -o FSTYPE -T "$scratch_parent") in
   ''|tmpfs|ramfs) fail 'native keyring test requires disk-backed scratch' ;;
 esac
 work=$(mktemp -d "$scratch_parent/keyring-package-install-XXXXXX")
-trap 'rm -rf -- "$work"' EXIT
+cleanup_work() { "${cleanup_command[@]}" "$work"; }
+trap cleanup_work EXIT
 export TMPDIR="$work/tmp" TMP="$work/tmp" TEMP="$work/tmp"
 mkdir -p "$work"/{tmp,build,root/etc/pacman.d,root/var/lib/pacman,root/var/cache/pacman/pkg,root/usr/share/pacman/keyrings,root/home,root/dev}
 cp "$ROOT/build-inputs/omarchy-mac-keyring/"* "$work/build/"
@@ -114,9 +123,16 @@ printf 'ok - actual 20260914-1 to -2 package upgrade restores new trust and pres
 INNER
 # No host home, /etc, /var, device tree or sockets are exposed. Direct runs
 # receive a new bwrap network namespace. The hosted runner reuses its nspawn
-# namespace only after the check above proves it contains loopback alone.
+# namespace only after the check above proves it contains loopback alone. It
+# invokes bwrap as guest root because hosted nspawn blocks nested uid mappings
+# from its unprivileged build user.
 # All writable paths including /tmp live under verified disk-backed scratch.
-bwrap "${bwrap_namespace_args[@]}" --die-with-parent --new-session --uid 0 --gid 0 \
+if (( hosted_private_boundary )); then
+  # Root inside bwrap maps to guest root, so its bind sources must have matching
+  # ownership after the unprivileged makepkg builds are complete.
+  sudo -n chown -R 0:0 "$work"
+fi
+"${bwrap_command[@]}" "${bwrap_namespace_args[@]}" --die-with-parent --new-session --uid 0 --gid 0 \
   --bind "$work/root" / --ro-bind /usr/bin /usr/bin --ro-bind /usr/lib /usr/lib \
   --ro-bind /usr/share/makepkg /usr/share/makepkg \
   --symlink usr/bin /bin --symlink usr/bin /sbin --symlink usr/lib /lib \

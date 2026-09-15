@@ -39,6 +39,9 @@ private_keyring_call = re.search(
 )
 assert private_keyring_call, 'native keyring test may reuse only nspawn private networking'
 assert harness.count('OMARCHY_KEYRING_TEST_NSPAWN_PRIVATE_NETWORK=1') == 1
+keyring_test = (root / 'test/shell.d/omarchy-mac-keyring-package-install-test.sh').read_text()
+assert 'bwrap_command=(sudo -n bwrap)' in keyring_test, 'hosted nested bwrap must enter its uid namespace as guest root'
+assert 'sudo -n chown -R 0:0 "$work"' in keyring_test, 'hosted bwrap bind sources must be owned by mapped guest root'
 install_step = next(step for step in job['steps'] if 'bash ./test/vm/run-selective-edge' in step.get('run', ''))
 install_env = {**job['env'], **install_step.get('env', {})}
 for key in ('OMARCHY_INSTALL_VM_PACKAGE_SOURCES', 'OMARCHY_INSTALL_VM_IDEMPOTENCY', 'OMARCHY_INSTALL_VM_KEYRING'):
