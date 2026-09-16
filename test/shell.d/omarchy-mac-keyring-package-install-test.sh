@@ -7,7 +7,7 @@ if [[ ${OMARCHY_RUN_NATIVE_KEYRING_TEST:-0} != 1 ]]; then
   printf 'ok - native keyring package install # SKIP set OMARCHY_RUN_NATIVE_KEYRING_TEST=1\n'
   exit 0
 fi
-for tool in bwrap makepkg pacman gpg findmnt; do require_command "$tool"; done
+for tool in bwrap makepkg pacman gpg gpgconf findmnt; do require_command "$tool"; done
 scratch_parent=${OMARCHY_TEST_TMPDIR:-${TMPDIR:-/var/tmp}}
 case $(findmnt -n -o FSTYPE -T "$scratch_parent") in
   ''|tmpfs|ramfs) fail 'native keyring test requires disk-backed scratch' ;;
@@ -25,8 +25,8 @@ cp "$ROOT/default/pacman/keyrings/"* "$work/build/"
 packages=("$work/build/"*.pkg.tar.*)
 [[ ${#packages[@]} == 1 ]] || fail 'exactly one keyring package was built'
 cp "${packages[0]}" "$work/keyring.pkg.tar.zst"
-# Committed public-only fixture works in shallow checkouts and source archives.
-baseline="$ROOT/test/fixtures/omarchy-mac-keyring-20260914-1"
+# Exact public-only quattro fixture works in shallow checkouts and source archives.
+baseline="$ROOT/test/fixtures/omarchy-mac-keyring-20260913-1"
 (cd "$baseline" && sha256sum --check SHA256SUMS) || fail 'previous public fixture checksums'
 mkdir "$work/build-previous"
 for name in PKGBUILD omarchy-mac-keyring.install omarchy-mac.gpg omarchy-mac-trusted omarchy-mac-revoked; do
@@ -60,8 +60,11 @@ mkdir -m700 /work/unrelated
 gpg --homedir /work/unrelated --batch --passphrase '' --quick-generate-key 'Independent fixture' ed25519 cert 1d >/work/unrelated.log 2>&1
 other=$(gpg --homedir /work/unrelated --with-colons --list-keys 2>/dev/null | awk -F: '$1=="fpr" {print $10; exit}')
 gpg --homedir /work/unrelated --export "$other" >/work/unrelated.gpg
-pacman-key --add /work/unrelated.gpg >/work/add.log 2>&1
-pacman-key --lsign-key "$other" >>/work/add.log 2>&1
+add_unrelated() {
+  pacman-key --add /work/unrelated.gpg >"$1" 2>&1
+  pacman-key --lsign-key "$other" >>"$1" 2>&1
+}
+add_unrelated /work/add.log
 trusted() {
   gpg --homedir /etc/pacman.d/gnupg --batch --with-colons --list-keys "$1" 2>/dev/null |
     awk -F: '$1=="pub" && ($2=="f" || $2=="u") {ok=1} END {exit !ok}'
@@ -74,14 +77,21 @@ done
 trusted "$key"
 trusted "$other"
 printf 'ok - actual package post_install establishes new trust and preserves unrelated trust\n'
-# Exercise a real prior-version upgrade, after the fresh-install check.
+# Start the upgrade scenario with independent initialized trust. Removing a
+# keyring package does not delete keys it previously populated, so reusing the
+# fresh-install keyring would manufacture the shipped baseline incorrectly.
 pacman -R --noconfirm omarchy-mac-keyring >/work/remove-fresh.log 2>&1
+gpgconf --homedir /etc/pacman.d/gnupg --kill all
+rm -rf /etc/pacman.d/gnupg
+pacman-key --init >/work/reinit.log 2>&1
+add_unrelated /work/readd.log
+trusted "$other"
+if gpg --homedir /etc/pacman.d/gnupg --list-keys "$key" >/dev/null 2>&1; then exit 1; fi
 pacman -U --noconfirm /work/previous.pkg.tar.zst >/work/previous.log 2>&1
-[[ $(pacman -Q omarchy-mac-keyring) == 'omarchy-mac-keyring 20260914-1' ]]
+[[ $(pacman -Q omarchy-mac-keyring) == 'omarchy-mac-keyring 20260913-1' ]]
 previous_key=F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7
 trusted "$previous_key"
-# Remove only the disposable new key; upgrade must restore it via post_upgrade.
-pacman-key --delete "$key" >/work/delete.log 2>&1
+# The shipped predecessor contains only the old primary; the upgrade must add the new one.
 if gpg --homedir /etc/pacman.d/gnupg --list-keys "$key" >/dev/null 2>&1; then exit 1; fi
 pacman -U --noconfirm /work/keyring.pkg.tar.zst >/work/upgrade.log 2>&1
 [[ $(pacman -Q omarchy-mac-keyring) == 'omarchy-mac-keyring 20260914-2' ]]
@@ -89,7 +99,7 @@ grep -q 'upgrading omarchy-mac-keyring' /work/upgrade.log
 trusted "$previous_key"
 trusted "$key"
 trusted "$other"
-printf 'ok - actual 20260914-1 to -2 package upgrade restores new trust and preserves existing old and unrelated trust\n'
+printf 'ok - actual shipped 20260913-1 to 20260914-2 upgrade adds new trust and preserves old and unrelated trust\n'
 INNER
 # No host home, /etc, /var, device tree, network, or sockets are exposed.
 # All writable paths including /tmp live under verified disk-backed scratch.
