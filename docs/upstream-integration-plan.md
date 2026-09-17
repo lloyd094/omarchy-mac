@@ -67,6 +67,29 @@ Coordinate releases with a versioned manifest recording the macOS installer revi
 
 The existing [M1 + M2 launch card](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294470280) covers the macOS app's try and install flows. The [unified-installer card](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10296876777) establishes the direction toward shared provisioning, and [Omarchy ARM](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294467178) covers package mirroring across ARM platforms. Coordinate this work through those existing efforts. The exact repository destinations and tail-installer technique are proposals to validate and review; those cards do not establish acceptance of a particular implementation.
 
+## Apple customization approach
+
+Prefer package-owned configuration and services for persistent Apple defaults, shared helpers for hardware discovery, and existing lifecycle mechanisms for procedural work. This is a proposed direction to validate with Marcelo and upstream maintainers. Agree package ownership and interfaces before expanding the approach; keep ready upstream fixes moving while individual customizations are improved.
+
+| Kind of customization | Preferred approach | Examples and boundaries |
+| --- | --- | --- |
+| Persistent system defaults | Package-owned configuration in the component's supported vendor location, with administrator overrides preserved | NetworkManager Wi-Fi backend, notch and function-key settings; retain any required initramfs rebuild |
+| Platform package selection | An Apple installation profile or dependency package, consuming shared package definitions | Audio and firmware requirements; keep optional video acceleration separate from the required baseline |
+| Background and event-driven behavior | Package-owned services and narrowly scoped helpers | Wi-Fi resume recovery and microphone mapping; retain device restrictions and actual-failure detection |
+| Desktop defaults | A platform defaults layer with explicit precedence below user choices | Trackpad behavior and Apple keybindings; avoid repeatedly appending settings to user files |
+| Hardware discovery and application capabilities | Shared helpers that recognize the relevant devices or capabilities | Display backlights, batteries, trackpads, and render-device availability; validate applicability before broadening an Apple-only workaround |
+| Kernel and boot maintenance | Existing package/kernel lifecycle hooks with explicit ownership and recovery behavior | Initramfs and ESP updates; use the intended installed kernel rather than assuming the running kernel is the target |
+
+A configuration drop-in supplies data to an existing component; an execution hook runs code at a lifecycle event. Use each for its actual purpose. Introduce a new Omarchy hook only for a demonstrated procedural variation, with defined inputs, ordering, privileges, failure propagation, and retry behavior. Straightforward device recognition can remain in shared code without an additional extension framework.
+
+Marcelo's [Asahi settings proposal](https://github.com/omacom/omarchy/pull/9835#discussion_r4003753056) is a concrete starting point: an Apple add-on owns the NetworkManager Wi-Fi configuration, while the installation profile selects it. His reply reports local testing and says the companion package/profile changes still need to land. Resolve that publication dependency before relying on it during setup or migration.
+
+### First implementation within the package milestone
+
+Propose packaging the existing Wi-Fi resume service instead of generating it in `install/hardware/apple/fix-wifi-resume.sh`. Agree its owning package with Marcelo, preserve the current Apple/chipset restrictions and recovery conditions, and define how setup activates the service. This is a bounded packaging change, not a prerequisite for all Apple support to land.
+
+Validate fresh installation, upgrade from the generated service, repeated setup, and administrator overrides. The migration must distinguish known generated content from administrator changes: an old file in `/etc/systemd/system` can shadow a newly packaged vendor unit. Preserve local changes and intentional disablement, and verify that unsupported hardware remains unaffected. Use the result to decide whether to apply the pattern to microphone policy and other static configuration. Track this work within the signed-package milestone and its tester-migration validation, without adding another launch milestone.
+
 ## Package delivery for collaboration
 
 ### Repository precedence is intentional
