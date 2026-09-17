@@ -22,9 +22,9 @@ The following state establishes the implementation baseline. Recheck branch tips
 
 | Area | State | Consequence |
 | --- | --- | --- |
-| Branches | Published code baseline is `0f5cb383`, including #8942 and #9834 | Track further integrations below |
-| Independent upstream fixes | Provisioning robustness and battery rounding are open as #12056 and #12058; Marcelo's #9834 and #9835 were also open | Coordinate existing submissions rather than reopen their content |
-| #9835 integration | The local integration already includes its rebased work: explicit menu package guards, architecture substitutions, the ARM fixture, pacman staging, and unified keyring work | Preserve completed adaptations and reconcile any later upstream changes |
+| Branches | Published code baseline is `0f5cb383`, including [#8942](https://github.com/omacom/omarchy/pull/8942) and [#9834](https://github.com/omacom/omarchy/pull/9834) | Track further integrations below |
+| Independent upstream fixes | Provisioning robustness and battery rounding are open as [#12056](https://github.com/omacom/omarchy/pull/12056) and [#12058](https://github.com/omacom/omarchy/pull/12058); Marcelo's [#9834](https://github.com/omacom/omarchy/pull/9834) and [#9835](https://github.com/omacom/omarchy/pull/9835) were also open | Coordinate existing submissions rather than reopen their content |
+| [#9835](https://github.com/omacom/omarchy/pull/9835) integration | The local integration already includes its rebased work: explicit menu package guards, architecture substitutions, the ARM fixture, pacman staging, and unified keyring work | Preserve completed adaptations and reconcile any later upstream changes |
 | Official ARM packages | Official edge contained 115 packages: 86 `aarch64`, 29 `any`; ARM RC/stable databases returned 404 | Official edge is a useful package source, not yet proof of a qualified full Mac installation |
 | Channel qualification | The ARM qualification allowlist in `install/helpers/pacman.sh` is empty | Do not describe channel switching as qualified merely because a database exists |
 | Steam | The FEX launcher and UI patch live in `omarchy-steam-fex`; the desktop installs and uses that package | Maintain the launcher in its package and the runtime integration in the desktop repository |
@@ -32,9 +32,9 @@ The following state establishes the implementation baseline. Recheck branch tips
 | Local encrypted integration | The local prepared-install contract requires LUKS2 and later installer-slice reclamation | Reconcile and test its producer and consumer; the contract alone does not prove an encrypted installation |
 | Image installer | The ISO repository documents encrypted installation and a remaining package-managed update gap for UUID-private ESP kernel/initramfs files | Kernel updates must be completed before release acceptance |
 
-Official ARM edge packages identify the Omarchy keyring key `40DFB630 FF42BCFF B047046C F0134EE6 80CAC571` as their signer, also used for x86 edge. The database itself is unsigned. This signing identity is compatible with #9835's `SigLevel = Required DatabaseOptional`; official ARM packages do not need a new fork trust root. Pacman verifies package bytes against the trusted keys when installing. The supplemental collaboration packages still need an agreed signing and trust-bootstrap route, and the complete package set still needs qualification.
+Official ARM edge packages identify the Omarchy keyring key `40DFB630 FF42BCFF B047046C F0134EE6 80CAC571` as their signer, also used for x86 edge. The database itself is unsigned. This signing identity is compatible with [#9835](https://github.com/omacom/omarchy/pull/9835)'s `SigLevel = Required DatabaseOptional`; official ARM packages do not need a new fork trust root. Pacman verifies package bytes against the trusted keys when installing. The supplemental collaboration packages still need an agreed signing and trust-bootstrap route, and the complete package set still needs qualification.
 
-Two package-source mechanisms currently coexist in `quattro-mac-live`: #9835's architecture-aware templates, whose edge template points `[omarchy]` at official ARM edge, and `install/hardware/apple/pacman.sh` with migration `1788200000.sh`, which appends `[omarchy-aarch64]` with `Optional TrustAll`. Both mechanisms are in the source tree, but a fresh Apple installation does not necessarily activate both: with the qualification allowlist empty, `omarchy_pacman_finalize` preserves the image's existing configuration rather than installing the official template. The Apple leaf then adds its stanza if absent. Inventory the actual configuration on each installation path; the collection decision must resolve both mechanisms and previously written configuration.
+Two package-source mechanisms currently coexist in `quattro-mac-live`: [#9835](https://github.com/omacom/omarchy/pull/9835)'s architecture-aware templates, whose edge template points `[omarchy]` at official ARM edge, and `install/hardware/apple/pacman.sh` with migration `1788200000.sh`, which appends `[omarchy-aarch64]` with `Optional TrustAll`. Both mechanisms are in the source tree, but a fresh Apple installation does not necessarily activate both: with the qualification allowlist empty, `omarchy_pacman_finalize` preserves the image's existing configuration rather than installing the official template. The Apple leaf then adds its stanza if absent. Inventory the actual configuration on each installation path; the collection decision must resolve both mechanisms and previously written configuration.
 
 ## Shared source development
 
@@ -46,7 +46,7 @@ Keep macOS disk operations, image-building code, package recipes, and service-sp
 
 Build on the published starting point and coordinate contributions through the shared branch. Default to history-preserving integration of upstream. Any exceptional shared-history rewrite needs explicit coordination. Submission branches may be rebased and cleaned independently without forcing all testers and contributors to follow rewrites.
 
-Maintain the working integration branch and active submission branches. Continue the provisioning and battery-rounding reviews, track #9835 with Marcelo, and extract the remaining upstream contributions when ready. ALS and Steam integration can be tested in the full system while receiving separate upstream review where appropriate.
+Maintain the working integration branch and active submission branches. Continue the provisioning and battery-rounding reviews, track [#9835](https://github.com/omacom/omarchy/pull/9835) with Marcelo, and extract the remaining upstream contributions when ready. ALS and Steam integration can be tested in the full system while receiving separate upstream review where appropriate.
 
 ## Repository boundaries and upstream destinations
 
@@ -105,7 +105,7 @@ The initial publication worklist contains eight packages absent from official AR
 | `omarchy-steam-fex` | Absent from official ARM edge; present in the fork repository |
 | `pinta` | Absent from official ARM edge; present in the fork repository |
 | `vi` | Absent from official ARM edge; present in the fork repository and reported among the pool's Factory builds |
-| `omarchy-settings-asahi` | Required by #9835; not found in the inspected published sources |
+| `omarchy-settings-asahi` | Required by [#9835](https://github.com/omacom/omarchy/pull/9835); not found in the inspected published sources |
 
 Begin recipe and publication work from this inventory and update entries as packages land. Use the listed alternate providers where appropriate. Asahi already supplies its kernel, audio components, and Widevine. Prioritize packages required for the baseline installation ahead of optional applications.
 
@@ -123,7 +123,7 @@ Build the selected runtime/settings pair from the same recorded `quattro-upstrea
 
 ### Signing and transition
 
-Use authenticated signing keys and signature enforcement for the shared release path. Replacing `Optional TrustAll` is a deliverable. Naeem's signing issue #394 and the pool's Factory are possible routes; select the route with the collaborators rather than silently requiring both.
+Use authenticated signing keys and signature enforcement for the shared release path. Replacing `Optional TrustAll` is a deliverable. Naeem's signing issue [#394](https://github.com/omacom/omarchy-mac/issues/394) and the pool's Factory are possible routes; select the route with the collaborators rather than silently requiring both.
 
 Trust initialization belongs in installer/package configuration. Upstream runtime changes should not hardcode trust in a temporary private service. Document all actual trust roots, including Arch Linux ARM and Asahi, official Omarchy, the pool's database and Factory signing, and any retained fork source.
 
@@ -184,7 +184,7 @@ Additional work to prepare for submission:
 
 | Work | Branch or component | Collaboration status | Submission path |
 | --- | --- | --- | --- |
-| Remaining Apple platform support (D) | `pr/apple-silicon` — `e0b622a2` | Included; this extraction branch does not contain #8942 | Prepare the remaining delta after reconciling #9835 and package prerequisites; no upstream PR recorded yet |
+| Remaining Apple platform support (D) | `pr/apple-silicon` — `e0b622a2` | Included; this extraction branch does not contain [#8942](https://github.com/omacom/omarchy/pull/8942) | Prepare the remaining delta after reconciling [#9835](https://github.com/omacom/omarchy/pull/9835) and package prerequisites; no upstream PR recorded yet |
 | Keyboard ambient-light control (E) | `pr/keyboard-als` — `071e54e8` | Equivalent integration commit `785ba933` included | Prepare an independent PR; no need to wait for unrelated installer work |
 | Steam/FEX | `omarchy-steam-fex` package and desktop integration | Desktop integration included; package publication/signing remains part of the delivery work | Track the package recipe/publication and any separate runtime submission; `pr/steam-fex` now points at D and is not a separate active series |
 | Required Mac packages | Eight-package publication worklist above | Dependencies have mixed publication/signing status | Add recipe PR links, build revisions, and published versions as submissions are created |
@@ -196,13 +196,13 @@ Update this tracker when a PR head changes, a change enters the collaboration br
 
 | State | Work |
 | --- | --- |
-| Already present locally | Explicit `omarchy-pkg-available` menu guards; architecture-specific preinstall and xpadneo targets; `test/fixtures/optional-aarch64-required`; rebased pacman/keyring work from #9835; packaged Steam launcher integration |
+| Already present locally | Explicit `omarchy-pkg-available` menu guards; architecture-specific preinstall and xpadneo targets; `test/fixtures/optional-aarch64-required`; rebased pacman/keyring work from [#9835](https://github.com/omacom/omarchy/pull/9835); packaged Steam launcher integration |
 | Still required | Package-channel decision and implementation; signed branch builds; publication of required missing packages; tested repository transition; encrypted installer integration and kernel update ownership; Aurora assumption audit |
-| After upstream changes | Compare the actual merged #9835 tree and subsequent upstream commits against the integration branch, reconcile differences, and extract remaining submissions |
+| After upstream changes | Compare the actual merged [#9835](https://github.com/omacom/omarchy/pull/9835) tree and subsequent upstream commits against the integration branch, reconcile differences, and extract remaining submissions |
 
 Use tree comparisons and range-diffs against the actual upstream merge to identify equivalent changes, resolve conflicts, and determine the remaining contribution. Run relevant tests after reconciliation.
 
-Continue #12056 and #12058 through review and coordinate #9834/#9835 with Marcelo. Independent fixes and package recipes can land while installation work proceeds. Prepare the remaining Apple platform contribution with its real package dependencies and evidence; decide whether it is one PR or several based on the final scope and reviewer feedback. ALS and Steam-related changes retain their own review boundaries where useful.
+Continue [#12056](https://github.com/omacom/omarchy/pull/12056) and [#12058](https://github.com/omacom/omarchy/pull/12058) through review and coordinate [#9834](https://github.com/omacom/omarchy/pull/9834)/[#9835](https://github.com/omacom/omarchy/pull/9835) with Marcelo. Independent fixes and package recipes can land while installation work proceeds. Prepare the remaining Apple platform contribution with its real package dependencies and evidence; decide whether it is one PR or several based on the final scope and reviewer feedback. ALS and Steam-related changes retain their own review boundaries where useful.
 
 Propose appropriate recipes for official `omarchy-pkgs` or the relevant upstream provider. Ask Ryan and the maintainers how ARM publication and qualification should work. Disclose temporary dependencies used during testing; do not describe the intended final official package set as if it already supplies the tested system.
 
@@ -224,9 +224,9 @@ Concrete next asks, with ownership to be agreed rather than assigned:
 
 | Person | Ask | Expected result |
 | --- | --- | --- |
-| Scott | Maintain the merge tracker and commit-label convention; continue #12056/#12058/#8942; identify which installed configurations need migration | A documented collaboration baseline, upstream submission set, and transition targets |
-| Marcelo Alcantara | Agree how to follow #9835, choose the shared installer repository, and connect his macOS engine to the prepared encrypted installer; identify the exact Asahi/Aurora payload and boot contracts | A source-integration agreement, installer repository home, and versioned handoff specification |
-| Naeem | Which signing route should resolve #394: signing the fork repository or moving the collaboration builds to the pool? How should existing machines acquire the keys and retire TrustAll? | A chosen signing route and tested migration design |
+| Scott | Maintain the merge tracker and commit-label convention; continue [#12056](https://github.com/omacom/omarchy/pull/12056)/[#12058](https://github.com/omacom/omarchy/pull/12058)/[#8942](https://github.com/omacom/omarchy/pull/8942); identify which installed configurations need migration | A documented collaboration baseline, upstream submission set, and transition targets |
+| Marcelo Alcantara | Agree how to follow [#9835](https://github.com/omacom/omarchy/pull/9835), choose the shared installer repository, and connect his macOS engine to the prepared encrypted installer; identify the exact Asahi/Aurora payload and boot contracts | A source-integration agreement, installer repository home, and versioned handoff specification |
+| Naeem | Which signing route should resolve [#394](https://github.com/omacom/omarchy-mac/issues/394): signing the fork repository or moving the collaboration builds to the pool? How should existing machines acquire the keys and retire TrustAll? | A chosen signing route and tested migration design |
 | Marcelo B., pool maintainer | Why is ARM edge configuration empty while RC/stable are populated? Can the pool expose an opt-in Mac override collection and build the runtime/settings pair from exact branch commits? What retention and promotion guarantees can it provide? | A usable configuration and an explicit build/publication agreement |
 | Wes | Review the encrypted installation and ESP/kernel-update contract; identify the validation needed and whether he wants to own or review part of the Linux installer | Agreed review criteria and an explicit role |
 | Ryan and upstream maintainers | Agree the upstream homes for the macOS app and shared Linux installer changes. What source/recipe revision and build process currently produce official ARM edge? What is needed to publish the eight listed packages, and what evidence qualifies ARM channels for wider release? | Agreed repository destinations and a concrete official packaging and qualification path |
