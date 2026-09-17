@@ -105,7 +105,9 @@ The initial publication worklist contains eight packages absent from official AR
 | `omarchy-steam-fex` | Absent from official ARM edge; present in the fork repository |
 | `pinta` | Absent from official ARM edge; present in the fork repository |
 | `vi` | Absent from official ARM edge; present in the fork repository and reported among the pool's Factory builds |
-| `omarchy-settings-asahi` | Required by [#9835](https://github.com/omacom/omarchy/pull/9835); not found in the inspected published sources |
+| `omarchy-settings-asahi` | Requested by the integrated [#9835](https://github.com/omacom/omarchy/pull/9835) work; publication under this exact name remains unconfirmed. Marcelo's [runtime release](https://github.com/maralcbr/omarchy-pkgs/releases/tag/asahi-quattro-a67d7f78) publishes `omarchy-settings-dev` instead |
+
+Marcelo's [package repository](https://github.com/maralcbr/omarchy-pkgs) is an existing source of Apple Silicon settings work. Checked 2026-09-17: runtime channel 32 points to `asahi-quattro-a67d7f78`, which publishes `omarchy-settings-dev-4.0.3.r6962.ga67d7f7-1-aarch64.pkg.tar.xz` and its detached signature. The inspected `asahi-quattro` recipe provides `omarchy-settings`, but does not declare `omarchy-settings-asahi`; the inspected release assets and latest listed stable supplemental database did not contain that separate name. Reconcile the integrated migration's explicit package request with Marcelo's intended overlay recipe and publication path. Reuse his settings work, while checking file ownership and compatibility with our recorded runtime/settings pair before selecting a package for the collaboration channel.
 
 Begin recipe and publication work from this inventory and update entries as packages land. Use the listed alternate providers where appropriate. Asahi already supplies its kernel, audio components, and Widevine. Prioritize packages required for the baseline installation ahead of optional applications.
 
