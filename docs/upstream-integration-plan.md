@@ -48,6 +48,25 @@ Build on the published starting point and coordinate contributions through the s
 
 Maintain the working integration branch and active submission branches. Continue the provisioning and battery-rounding reviews, track #9835 with Marcelo, and extract the remaining upstream contributions when ready. ALS and Steam integration can be tested in the full system while receiving separate upstream review where appropriate.
 
+## Repository boundaries and upstream destinations
+
+Keep the Apple installer in a separate repository from the desktop integration branch. Agree its shared home with Marcelo Alcantara and the maintainers, preferably by reusing or extracting his existing installer project with history and attribution preserved. Incorporate suitable components from `omarchy-mac-iso` there. The repository name, ownership, and eventual official home remain decisions for the group.
+
+Upstream integration can land across several official repositories. The intended outcome is a supported Apple installation path using upstream Omarchy packages and shared Linux provisioning, allowing the desktop fork to be retired. The macOS application can remain a maintained companion project. Upstream already separates image construction and installation in [omacom/omarchy-iso](https://github.com/omacom/omarchy-iso) from the runtime and system/user setup supplied by Omarchy packages.
+
+| Component | Collaboration home | Proposed upstream destination |
+| --- | --- | --- |
+| macOS app, try/install interface, APFS preparation, and Apple boot preparation | Shared Apple installer repository | An official companion repository, subject to maintainer agreement |
+| Temporary Linux environment, image construction, encrypted installation, and installer-space reclamation | Installer project, reusing shared Linux installation machinery | Reusable installer changes proposed to `omacom/omarchy-iso`; Apple-specific components retained in the agreed installer project where appropriate |
+| Hardware detection, Apple defaults, desktop behavior, and shared system/user provisioning | `omacom/omarchy-mac:quattro-upstream` | `omacom/omarchy`, with package-owned settings in the relevant settings package |
+| Kernel, firmware, and package-managed boot updates | Relevant package source and recipe repositories | Official Omarchy packaging or the relevant upstream provider, with runtime integration in Omarchy as needed |
+
+Share Linux provisioning and package definitions across installation paths. The Apple installer should consume those interfaces and recorded package builds rather than carry a second evolving copy of desktop setup. Installer-owned reclamation code may need to run after the first installed boot; define how it is delivered and retired without assuming that every installed helper belongs in the desktop repository.
+
+Coordinate releases with a versioned manifest recording the macOS installer revision, Linux installer/image revision and artifact identity, exact package set, and handoff format version. Test the producer and consumer together and reject incompatible handoffs before disk mutation. This release manifest complements the per-installation disk and partition manifest described below; it contains no encryption credentials.
+
+The existing [M1 + M2 launch card](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294470280) covers the macOS app's try and install flows. The [unified-installer card](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10296876777) establishes the direction toward shared provisioning, and [Omarchy ARM](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294467178) covers package mirroring across ARM platforms. Coordinate this work through those existing efforts. The exact repository destinations and tail-installer technique are proposals to validate and review; those cards do not establish acceptance of a particular implementation.
+
 ## Package delivery for collaboration
 
 ### Repository precedence is intentional
@@ -206,15 +225,15 @@ Concrete next asks, with ownership to be agreed rather than assigned:
 | Person | Ask | Expected result |
 | --- | --- | --- |
 | Scott | Maintain the merge tracker and commit-label convention; continue #12056/#12058/#8942; identify which installed configurations need migration | A documented collaboration baseline, upstream submission set, and transition targets |
-| Marcelo Alcantara | Agree how to follow #9835 and connect his macOS engine to the prepared encrypted installer; identify the exact Asahi/Aurora payload and boot contracts | A source-integration agreement and installer handoff specification |
+| Marcelo Alcantara | Agree how to follow #9835, choose the shared installer repository, and connect his macOS engine to the prepared encrypted installer; identify the exact Asahi/Aurora payload and boot contracts | A source-integration agreement, installer repository home, and versioned handoff specification |
 | Naeem | Which signing route should resolve #394: signing the fork repository or moving the collaboration builds to the pool? How should existing machines acquire the keys and retire TrustAll? | A chosen signing route and tested migration design |
 | Marcelo B., pool maintainer | Why is ARM edge configuration empty while RC/stable are populated? Can the pool expose an opt-in Mac override collection and build the runtime/settings pair from exact branch commits? What retention and promotion guarantees can it provide? | A usable configuration and an explicit build/publication agreement |
 | Wes | Review the encrypted installation and ESP/kernel-update contract; identify the validation needed and whether he wants to own or review part of the Linux installer | Agreed review criteria and an explicit role |
-| Ryan and upstream maintainers | What source/recipe revision and build process currently produce official ARM edge? What is needed to publish the eight listed packages, and what evidence qualifies ARM channels for wider release? | A concrete official packaging and qualification path |
+| Ryan and upstream maintainers | Agree the upstream homes for the macOS app and shared Linux installer changes. What source/recipe revision and build process currently produce official ARM edge? What is needed to publish the eight listed packages, and what evidence qualifies ARM channels for wider release? | Agreed repository destinations and a concrete official packaging and qualification path |
 
 Suggested order:
 
-1. Agree the contribution workflow for the published shared branch and maintain the merge tracker as changes are integrated and submitted.
+1. Agree the contribution workflow for the published shared branch, choose the shared installer repository with Marcelo, and maintain the merge tracker as changes are integrated and submitted.
 2. Resolve whether the pool can provide the selectable override collection and exact-source builds. In parallel, define the installed-system contract: encryption, layout, boot ownership, updates, and reclamation states.
 3. Assemble a signed, recorded package candidate and validate package selection and transition behavior. Use a documented signed fallback source if the pool cannot yet supply the required collection.
 4. Integrate the macOS-to-Linux handoff and encrypted installer, including restartable reclamation and package-managed kernel updates.
