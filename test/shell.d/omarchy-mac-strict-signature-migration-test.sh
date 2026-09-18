@@ -25,7 +25,7 @@ cat >"$test_tmp/bin/sudo" <<'SH'
 #!/bin/bash
 if [[ $1 == pacman-key && $2 == --populate ]]; then echo "populate $3" >>"$TEST_CALLS"; exit 0; fi
 if [[ $1 == pacman-key && $2 == --finger ]]; then
-  printf 'Key fingerprint = F3C5 AE3F CFFC 738C 301E  30A8 F0C5 48C0 D272 79F7\n'
+  printf 'Key fingerprint = FBD6 874D 423C 418D DB6D  143E ECE1 9CDD E306 DBD2\n'
   exit 0
 fi
 exec "$@"

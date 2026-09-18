@@ -1,6 +1,6 @@
 echo "Require trusted Omarchy Mac package and database signatures"
 
-readonly omarchy_mac_signing_key='F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7'
+readonly omarchy_mac_signing_key='FBD6874D423C418DDB6D143EECE19CDDE306DBD2'
 readonly strict_omarchy_mac_policy='PackageRequired DatabaseRequired TrustedOnly'
 
 # The unsigned rc4 bootstrap must already have delivered this trust. Do not
