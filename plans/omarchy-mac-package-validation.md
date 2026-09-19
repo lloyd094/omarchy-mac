@@ -1,50 +1,64 @@
-# omarchy-mac 0.1.0 candidate validation
+# omarchy-mac candidate validation
 
-Recorded 2026-09-18. This is a reviewable source/package candidate, not a production deployment. No live desktop configuration, repository trust, rolling feed or installer was changed.
+Updated 2026-09-18 after source review and the authorized M2 Max trial. Candidate integration has not been merged or promoted.
 
 ## Recorded inputs
 
-| Input | Revision |
+| Input | Revision or version |
 | --- | --- |
-| Collaboration baseline | `350c46550b99688cdb5224408edd5870de2ca07b` |
-| Runtime/settings/add-on source | `b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2` |
-| Add-on recipe and candidate tooling | `94a2dd49a6f42f98b40367479db38b6d35480b85` in `omarchy-mac/omarchy-pkgs-aarch64:feature/omarchy-mac-package` |
-| Upstream runtime/settings recipes | `6d27290193109c07b0134360d382e64790ae5dda` in `omacom/omarchy-pkgs` |
+| Shared branch and active dev-linked checkout | `350c46550b99688cdb5224408edd5870de2ca07b` |
+| Installed add-on source | `b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2` |
+| Add-on recipe/tooling | `94a2dd49a6f42f98b40367479db38b6d35480b85` |
+| Migration/compatibility review | `c19e2f6a` |
+| Login activation review | `6607f4bb` |
+| Separately reviewable audio-restart fix | `4ee7ddcf` |
+| Installed trial runtime | `4.0.2-202609092055.mac1` (verified local reconstruction) |
+| Installed settings | `4.0.2-202609092055`, unchanged |
+| Installed add-on | `0.1.0-1` |
 
-Worktrees: `/tmp/omarchy-mac-package` (`integrate/omarchy-mac-package`) and `/tmp/omarchy-mac-package-recipes` (`feature/omarchy-mac-package`). The original dev-linked checkout remains on `quattro-mac-live` at `350c4655`; its untracked plans were preserved. The packaging repository's original checkout remains on `main`, with its pre-existing untracked content preserved.
+Persistent worktrees: `/home/scott/code/omarchy-worktrees/mac-package` and `/home/scott/code/omarchy-worktrees/mac-package-recipes`. The former `/tmp` worktrees and full companion bundle were lost on reboot. Their branches survived; no uncommitted source was recovered or assumed. The active checkout and its unrelated files were preserved.
 
-The source commits separate Wi-Fi extraction, microphone/policy extraction, setup hardening, desktop interfaces, and compatibility migrations. Recipe and candidate-tool commits live in the packaging repository. Documentation commits may follow the pinned build inputs without changing their payloads.
+## Current result
 
-## Candidate artifacts
+The add-on remains on `integrate/omarchy-mac-package`; it is not merged into `quattro-upstream`, which remains at `350c4655`. The original runtime/settings/add-on candidate trio was built from `b76c6d79`, with scratch transaction checks. That `/tmp` bundle did not survive reboot. The durable live trial instead pairs add-on `0.1.0-1` from `b76c6d79` with a minimal reconstruction of the installed runtime (`4.0.2-202609092055.mac1`); settings remains `4.0.2-202609092055` and the dev link remains `quattro-mac-live`. Ownership transfer and offline rollback were rehearsed with dependencies enforced, and the live transaction and package integrity checks passed.
 
-Local artifact bundle: `/tmp/omarchy-mac-candidate/`. `manifest.json` and `SHA256SUMS` record exact source/recipe revisions and artifact hashes. The three unsigned aarch64 artifacts are:
+Scott confirmed reboot, Wi-Fi, playback, microphone recording, and lid-close resume on an M2 Max. Wi-Fi retains the administrator’s wpa_supplicant override; BCM4388 remains excluded from resume recovery, and the existing user microphone unit remains authoritative. Audio restart exposed a WirePlumber teardown stall. It reproduced with WirePlumber alone, but stopped cleanly after stopping the mapper and unloading its null sink. A separate desktop fix waits for graph removal and DSP readiness, preserves service state and device choices, and completed two live restarts in 3.75 seconds each without forced recovery. The exact underlying WirePlumber listener-loop defect remains unidentified.
 
-- `omarchy-mac-0.1.0-1-aarch64.pkg.tar.xz`
-- `omarchy-4.0.3.r1.mac.b76c6d79-1-aarch64.pkg.tar.xz`
-- `omarchy-settings-4.0.3.r1.mac.b76c6d79-1-aarch64.pkg.tar.xz`
+Historical migration bodies are retained, with only the unresolved package name corrected in the old package-acquisition migration; compatibility leaves acquire the add-on in their original system/user scope. The new transition handles already-completed migrations. Login only starts an enabled microphone unit; provisioning, first-run and migration handle setup.
 
-The companion versions are deliberately local candidate versions, not rolling release versions. No package assets were uploaded. The recipe is not registered in the rolling package updater.
+The revised extraction saves 1,279 desktop lines against `350c4655`. Including the separately reviewable restart fix and its tests, the combined reduction is 1,143 lines. `packages/`, plans and documentation are excluded from those desktop counts. Upstream desktop PRs must exclude `packages/`; it remains independently maintained in the collaboration repository. CLI, standalone package and focused regression suites pass. The non-root desktop aggregate passes 285/286 shell test files; the existing optional-menu drift failure remains.
 
-## Verification
+No candidate was published to the rolling feed, repository trust was not changed, and no integration dev-link switch or merge occurred. Signed repository selection, full image provisioning, additional M1/M2 coverage, the packaged-unit activation path, and separately recorded Aurora qualification remain open. Current persistent worktrees are under `~/code/omarchy-worktrees/`; live artifacts, recovery commands and diagnostic evidence are under `~/omarchy-mac-recovery/trial/`.
 
-- Standalone `makepkg` build: the recipe copies only `packages/omarchy-mac/` into a separate source directory before running its tests and staging the package. No desktop-tree resources are needed. Source revision and MIT attribution are included in the artifact.
-- Dependencies: audited against actual executable ownership, including `cmp` from diffutils, `pactl` from libpulse, and `pw-dump`/`pw-link` from pipewire. No kernel, `omarchy-settings` replacement/provision, installer or trust payload is declared.
-- Package ownership: every non-directory payload path has one owner. The old runtime's Wi-Fi/microphone helpers and old settings microphone unit transfer to the add-on. Neither runtime nor settings carries the independently buildable package source directory.
-- Pacman transactions: fresh, upgrade from full baseline runtime/settings artifacts, and repeat installation pass in disposable roots under fakeroot. The installed base package database supplies dependencies, so normal dependency checks stay enabled. No broad overwrite option is used. Hooks and scriptlets are disabled; this proves package resolution/file transfer rather than a bootable system.
-- Effective configuration: real NetworkManager `--print-config` selects iwd from the vendor default and honors an `/etc` replacement. Real `systemd-analyze cat-config` honors the administrator unit replacement. Modprobe parses both vendor and administrator options. Real `systemctl --root` validates repair of the exact old enablement symlinks after retiring the generated unit.
-- Setup and migration tests: fresh/upgrade/repeat/interrupted setup; two user homes; offline activation without endpoints or a user bus; first-session activation with a temporary bus socket; administrator/user fragments, dangling links, masks, explicit disables and modified config; failure and retry after package acquisition or setup failure. Historical migration names and compatibility leaves remain available.
-- Wi-Fi behavioral tests: healthy resume, disabled radio, immediate signature recovery, backstop, clock steps, stale journal exclusion, driver unload/load failures, failed reconnect, and excluded chipsets/architectures. BCM4388, Intel/T2 and non-Apple cases stay excluded.
-- Microphone behavioral tests: original graph/state tests moved with the unchanged mapper; missing endpoints, gain/mute persistence, device selection, rollback, supervisor retry and daemon loss remain covered. A desktop integration test proves state saving precedes audio restart.
-- Desktop aggregate: `./test/all` as UID 1000 with `OMARCHY_PKGS_PATH=/home/scott/code/omarchy-pkgs`, `OMARCHY_ISO_PATH=/home/scott/code/omarchy-iso`, and `NO_COLOR`, `LC_ALL` and compositor variables unset. CLI suite passes; **285 of 286 shell test files pass**. `optional-transactions-drift-test.sh` fails identically in the untouched `350c4655` baseline: its parser does not model the existing compound Steam guard or preinstall row. This unrelated baseline failure was preserved and is not reported as a green aggregate. Graphical checks are skipped in this headless run.
+## Durable evidence
 
-Raw logs are retained in the local bundle. The final aggregate ran the same runtime/setup/test code as the pinned artifacts; subsequent source edits only added extraction attribution and dependency documentation.
+`/home/scott/omarchy-mac-recovery/trial/` contains:
 
-## Scope and measured reduction
+- `artifacts/` and `SHA256SUMS`: local runtime trial, reconstructed runtime rollback, and pinned add-on archives. The runtime was reconstructed from 1,885 installed entries matching pacman’s recorded manifest; it is not an original downloaded build artifact. Archive comparison confirms only two transferred files and the new detector/link differ in the trial runtime.
+- `payload-audit.json`, `archive-diff.json`, `rehearsal.json`, `transaction.log`, `rollback-script-test.log`: paired installation, repetition, rollback and retry checks. Scratch transactions retain dependency checks and disable hooks; the later live local transaction ran its normal hooks. No broad overwrite workaround was used.
+- `live-before.json`, `live-after-setup.json`, `post-resume.json`: effective configuration, unchanged gain/mute/default-device checks, and actual sleep logs.
+- `restart-trace-20260918/`, `wireplumber-only-trace-20260918/`, `mapper-unloaded-trace-20260918/`: reproducible stall stacks and discriminating experiments. PulseAudio stayed running during the WirePlumber-only stall.
+- `fixed-restart-trace-20260918/`: the first patch attempt still failed and raced DSP readiness; retained as failed evidence.
+- `fixed-restart-ready-trace-20260918/`, `fixed-restart-repeat-trace-20260918/`: corrected restart passed twice, restored audio levels, and did not enter forced recovery. It was invoked by explicit worktree path; the active `omarchy restart audio` command has not been replaced.
+- `review-tests/`: CLI, standalone package, focused regression and aggregate logs. Final readiness changes were rerun in the focused restart test after the aggregate had begun. The aggregate's only failing file is `optional-transactions-drift-test.sh`, previously reproduced on the unchanged baseline.
 
-Compared with `350c4655`, the desktop runtime/setup/migration areas have 47 added and 690 removed lines: **643 net lines removed**. Desktop tests have 55 added and 746 removed: **691 net lines removed**. The total desktop reduction is **1,334 lines**, including integration calls, compatibility wrappers, package acquisition and migration coverage. The new independently maintained package directory is excluded from this desktop reduction; it carries the transferred implementation and behavioral tests plus setup safeguards.
+Snapshot 8 remains the retained pre-trial root snapshot; `/home` and `/boot` are excluded, and root restoration has not been exercised. The tested offline rollback script and separate Wi-Fi recovery instructions are in the recovery folder.
 
-Desktop bindings, trackpad defaults, Electron workarounds, ALS, HID/initramfs changes, boot, snapshots and installer work are outside the add-on release. The candidate companion recipe merely retains the existing ALS unit; it does not transfer it into the add-on.
+## Source identity and CPU observation
 
-## Release gates still open
+The extracted mapper is byte-identical to `350c4655:bin/omarchy-audio-asahi-mic-map` (SHA256 `5a4cd6bbc36e2c7beb62023a27997d1f5f84b3ffeae58a5f107185615dfda1bc`). The pre-trial installed helper differs (SHA256 `838d44a5578ad12c134ad77ff54284afe7b987c4223480330ec4f54ba881d291`): it polled every two seconds. The prior 2h25m CPU observation belonged to that older helper. It does not demonstrate an event-loop regression in the extracted helper; a sustained idle CPU measurement of the current helper remains separate work.
 
-Physical M1/M2 suspend/resume, microphone/device/gain behavior, effective policy and reboot validation remain unperformed against these artifacts. Aurora requires separately recorded evidence. Signed staging-source selection, installation hooks, and full image provisioning still need qualification. Image builders must consume `install/omarchy-apple.packages` before hardware setup. These are release-promotion gates, not claims made by the source candidate. The active desktop and rolling feed remain unchanged.
+## Desktop reduction and upstream boundary
+
+Counts use `git diff --numstat 350c4655 <revision> -- bin default install migrations test`.
+
+| Scope | Runtime/setup/migrations net removed | Tests net removed | Total net removed |
+| --- | ---: | ---: | ---: |
+| Reviewed extraction at `6607f4bb` | 607 (52 added, 659 removed) | 672 (75 added, 747 removed) | 1,279 |
+| Including restart fix at `4ee7ddcf` | 533 (129 added, 662 removed) | 610 (137 added, 747 removed) | 1,143 |
+
+The earlier 1,334 figure described the initial candidate before these review fixes. The separate restart fix and its tests add 136 lines to the reviewed desktop delta. Package source is counted separately. Do not submit the entire collaboration branch as the upstream desktop PR: exclude `packages/` and keep extraction, compatibility, desktop lifecycle changes and packaging independently reviewable.
+
+## Qualification limits
+
+The M2 trial does not validate iwd as the live backend, BCM4378/BCM4387 driver recovery, an unmodified packaged microphone unit, all M1/M2 hardware, signed repository promotion or an installer. Gain/mute and device selections were checked after the fixed restarts; user listening confirmation after the final corrected restart is pending. Shared branch merge and any dev-link change require a separate reviewed step. Aurora requires independent evidence.
