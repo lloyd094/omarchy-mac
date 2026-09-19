@@ -13,7 +13,7 @@ One Apple Silicon Omarchy system that testers can install, developed together an
 | Desktop and shared helpers | `omacom/omarchy-mac:quattro-upstream`, distilling the accumulated fork into upstream-reviewable changes | Focused PRs to `omacom/omarchy` |
 | Persistent Apple configuration and services | `packages/omarchy-mac/` in that repository; PKGBUILD in `omarchy-mac/omarchy-pkgs-aarch64` | Independently versioned `omarchy-mac` add-on, with official recipe publication and any later source-repository split agreed with maintainers |
 | macOS app, Apple boot preparation and encrypted Linux installation | Reuse [Marcelo's macOS installer](https://github.com/maralcbr/omarchy-mx-mac/tree/main/apps/omarchy-apple-installer) and suitable [omarchy-mac-iso](https://github.com/omarchy-mac/omarchy-mac-iso) components in a shared installer project | Companion installer repository, with reusable Linux installation changes proposed to `omacom/omarchy-iso`; exact homes to agree |
-| Packages testers install | A signed collaboration channel containing a compatible set of branch-built packages and their dependencies | Official Omarchy packaging or the appropriate upstream providers as components are accepted |
+| Packages testers install | Use [omarchy-pkgs-aarch64](https://github.com/omarchy-mac/omarchy-pkgs-aarch64) for the release, completing signing and validation of the compatible package set | Official Omarchy packaging or the appropriate upstream providers as components are accepted |
 
 The collaboration **branch** is what we develop together. The collaboration **channel** is what testers install together. Official ARM packages help, but we still need to distribute desktop and add-on changes that have not landed upstream.
 
@@ -53,15 +53,15 @@ Bindings, trackpad defaults, Electron workarounds, ambient-light support, HID ea
 
 ## Packages testers install
 
-Provide one reproducible, signed package set for both fresh installations and existing testers. It must include new names such as `omarchy-mac` and the needed branch-built replacements for `omarchy` and `omarchy-settings`. Record exact source and recipe revisions, versions, providers and signers.
+Use [omarchy-mac/omarchy-pkgs-aarch64](https://github.com/omarchy-mac/omarchy-pkgs-aarch64) as the initial collaboration package source for testers and the release. Complete its publication and signing work to provide one reproducible package set for both fresh installations and existing testers. It must include new names such as `omarchy-mac` and the needed branch-built replacements for `omarchy` and `omarchy-settings`. Record exact source and recipe revisions, versions, providers and signers.
 
 Repository precedence must select those intended replacements. Test installation, upgrades, equal versions, locally newer packages and leaving the channel. Coordinate ownership across runtime, settings and add-on packages. Availability of an official ARM package does not establish that it contains the collaboration changes or that the complete installation path is qualified.
 
-The [package pool](https://omarchy-pool.firemanxbr.org/) is a candidate for delivery if it can supply our complete set and overrides. Agree its build, promotion, retention and rollback arrangements with its maintainer. Its service-specific configuration is separate from the upstream desktop design. The [dated package inventory and pool observations](upstream-integration-reference.md#package-delivery-observations) are inputs to recheck before choosing the route.
+The [package pool](https://omarchy-pool.firemanxbr.org/) remains an open question for sub-team experimentation: could it let groups build and test new ideas in independently managed collections, then promote agreed changes into the release package set? Explore build, signing, promotion, retention and rollback with its maintainer. Adopting the pool is not a release dependency; proceed with `omarchy-pkgs-aarch64` while that exploration continues. The [dated package inventory and pool observations](upstream-integration-reference.md#package-delivery-observations) remain inputs to recheck.
 
 Signing and a tested transition away from the existing unsigned repository configuration are release deliverables; [#394](https://github.com/omacom/omarchy-mac/issues/394) records that gap. Trust bootstrap belongs in installer/package configuration. Changing future templates alone does not update existing machines.
 
-**Release and packaging maintainers:** please propose the complete tester set and delivery route, name a signing/publication owner, and explain how fresh installs and existing testers reach the same versions and recover from failed updates. With Ryan and upstream maintainers, agree official recipe homes and ARM qualification. If the pool is selected, confirm with its maintainer that it supports branch-built overrides and resolve the recorded ARM configuration gaps.
+**Release and packaging maintainers:** please define the complete tester set delivered through `omarchy-pkgs-aarch64`, name a signing/publication owner, and explain how fresh installs and existing testers reach the same versions and recover from failed updates. With Ryan and upstream maintainers, agree official recipe homes and ARM qualification. Teams interested in the pool can explore its experimental collections separately, including branch-built overrides and the recorded ARM configuration gaps.
 
 ## Installer
 

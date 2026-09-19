@@ -8,6 +8,8 @@ The candidate began with Wi-Fi recovery, then added the other components in sepa
 
 ## Package delivery observations
 
+The release delivery decision is to use [omarchy-mac/omarchy-pkgs-aarch64](https://github.com/omarchy-mac/omarchy-pkgs-aarch64), completing its signing and package-transition work. The pool observations and questions below support a separate exploration of independent sub-team experiments; resolving them is not a release prerequisite.
+
 ### Pool inspection
 
 The 2026-09-17 inspection found that the pool provides upstream mirrors, a Factory for additional builds, signed databases, and documented promotion/testing workflows. Its official Omarchy ARM source contained the same 115 package names counted in official edge. Asahi sources were present in the inspected edge inventory but absent from its RC/stable inventories. Pool ring names are distinct from official Omarchy channel names.
@@ -53,9 +55,9 @@ Build the selected runtime/settings pair from the same recorded `quattro-upstrea
 
 At the recorded `350c4655` baseline, architecture-aware templates point at official ARM edge while the Apple setup leaf and migration `1788200000.sh` can add an `[omarchy-aarch64]` source with `Optional TrustAll`. The ARM channel qualification allowlist is empty. Inventory the effective configuration on each installation path; the presence of a repository database is not qualification, and changing future source files does not repair previously written configuration.
 
-Use authenticated signing keys and signature enforcement for the shared release path. Replacing `Optional TrustAll` is a deliverable. The [existing signing issue #394](https://github.com/omacom/omarchy-mac/issues/394) records the gap. Signing the collaboration repository and using the pool’s Factory are possible routes; the release and packaging maintainers need to choose a route and confirm an owner. Raising the issue does not establish responsibility for implementing its solution.
+Use authenticated signing keys and signature enforcement for the shared release path. Replacing `Optional TrustAll` is a deliverable. The [existing signing issue #394](https://github.com/omacom/omarchy-mac/issues/394) records the gap. Complete signing for the existing `omarchy-pkgs-aarch64` delivery path; the release and packaging maintainers need to confirm an owner. Any later pool experiment must define its own trust and signing arrangements. Raising the issue does not establish responsibility for implementing its solution.
 
-Trust initialization belongs in installer/package configuration. Upstream runtime changes should not hardcode trust in a temporary private service. Document all actual trust roots, including Arch Linux ARM and Asahi, official Omarchy, the pool's database and Factory signing, and any retained fork source.
+Trust initialization belongs in installer/package configuration. Upstream runtime changes should not hardcode trust in a temporary private service. Document all actual trust roots, including Arch Linux ARM and Asahi, official Omarchy and the collaboration source. Include the pool's database and Factory signing if a tested configuration uses them.
 
 Retire the unsigned repository leaf only when its replacement works for both fresh installations and existing testers. Deleting the leaf and migration from a future source branch does not remove a stanza already written to a user's machine. Provide a separately tested transition that installs the required keys, changes repository order, replaces packages where necessary, and removes obsolete configuration without stranding users.
 
@@ -104,7 +106,7 @@ Update this tracker when a PR head changes, a change enters the collaboration br
 | State | Work |
 | --- | --- |
 | Already present locally | Explicit `omarchy-pkg-available` menu guards; architecture-specific preinstall and xpadneo targets; `test/fixtures/optional-aarch64-required`; rebased pacman/keyring work from [#9835](https://github.com/omacom/omarchy/pull/9835); packaged Steam launcher integration |
-| Still required | Package-channel decision and implementation; signed branch builds; publication of required missing packages; tested repository transition; encrypted installer integration and kernel update ownership; Aurora assumption audit |
+| Still required | Complete the `omarchy-pkgs-aarch64` delivery path; signed branch builds; publication of required missing packages; tested repository transition; encrypted installer integration and kernel update ownership; Aurora assumption audit |
 | After upstream changes | Compare the actual merged [#9835](https://github.com/omacom/omarchy/pull/9835) tree and subsequent upstream commits against the integration branch, reconcile differences, and extract remaining submissions |
 
 Use tree comparisons and range-diffs against the actual upstream merge to identify equivalent changes, resolve conflicts, and determine the remaining contribution. Run relevant tests after reconciliation.
