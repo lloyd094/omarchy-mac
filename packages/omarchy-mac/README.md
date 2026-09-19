@@ -6,7 +6,7 @@ Apple Silicon defaults and support services for Omarchy. Version: `0.1.0` (candi
 
 This directory is self-contained. Copy it anywhere, run `./test/all`, then `./install /absolute/staging/root`. Staging requires Bash, coreutils and findutils; tests also use Python and systemd. Nothing is enabled or started by staging. The Arch recipe lives in `omarchy-mac/omarchy-pkgs-aarch64`, on `feature/omarchy-mac-package`, and pins a full collaboration-repository commit.
 
-Runtime dependencies: `omarchy` (shared Apple hardware detector), Bash, coreutils, grep, sed, gawk, systemd, pciutils, kmod, NetworkManager, iwd, Python, PipeWire, pipewire-pulse, libpulse (pactl), and WirePlumber. The existing desktop audio leaf still installs the protected Asahi speaker stack. See `ORIGINS.md` for extraction attribution.
+Runtime dependencies: `omarchy` (shared Apple hardware detector), Bash, coreutils, diffutils (cmp), grep, sed, gawk, systemd, pciutils, kmod, NetworkManager, iwd, Python, PipeWire, pipewire-pulse, libpulse (pactl), and WirePlumber. The existing desktop audio leaf still installs the protected Asahi speaker stack. See `ORIGINS.md` for extraction attribution.
 
 ## Setup contract
 
