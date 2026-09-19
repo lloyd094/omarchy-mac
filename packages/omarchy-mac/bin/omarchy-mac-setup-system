@@ -1,0 +1,38 @@
+#!/bin/bash
+# omarchy:summary=Set up package-owned Apple Silicon services
+# omarchy:hidden=true
+# Optional root permits offline provisioning on the target hardware.
+set -euo pipefail
+root=${1:-/}
+root=${root%/}
+[[ -z $root || $root == /* ]] || exit 2
+omarchy-hw-apple-silicon || exit 0
+share="$root/usr/share/omarchy-mac"
+
+# Retire only byte-identical generated files, never links (including masks).
+retire() {
+  local file=$1 original=$2
+  if [[ -f $file && ! -L $file ]] && cmp -s "$file" "$original"; then
+    if [[ -e $file.omarchy-mac-retired || -L $file.omarchy-mac-retired ]]; then
+      cmp -s "$file" "$file.omarchy-mac-retired" || return 1
+      rm -- "$file"
+    else
+      mv -- "$file" "$file.omarchy-mac-retired"
+    fi
+  fi
+}
+
+unit=omarchy-wifi-resume-fix.service
+retire "$root/etc/systemd/system/$unit" "$share/legacy/$unit"
+if "$root/usr/lib/omarchy-mac/wifi-supported"; then
+  if [[ -e $root/etc/systemd/system/$unit || -L $root/etc/systemd/system/$unit || -L $root/run/systemd/system/$unit ]]; then
+    echo "Preserving Wi-Fi unit override: $root/etc/systemd/system/$unit"
+  else
+    systemctl --root="${root:-/}" enable "$unit"
+  fi
+fi
+if [[ -z $root && -d /run/systemd/system ]]; then
+  systemctl daemon-reload
+  systemctl cat "$unit"
+  NetworkManager --print-config
+fi
