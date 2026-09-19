@@ -154,7 +154,7 @@ pass "the Apple Silicon audio repair skips unrelated hardware"
 
 grep -Fq 'omarchy-audio-asahi-mic-map --save-state' "$ROOT/bin/omarchy-restart-audio" ||
   fail "audio restart saves Asahi mic mapping gain before resetting daemons"
-grep -Fq 'omarchy-hw-apple-silicon && omarchy-mac-setup-user' "$ROOT/default/hypr/autostart.lua" ||
+grep -Fq 'omarchy-hw-apple-silicon && systemctl --user is-enabled --quiet omarchy-asahi-mic.service && systemctl --user start omarchy-asahi-mic.service' "$ROOT/default/hypr/autostart.lua" ||
   fail "session start launches the Asahi mic mapper"
 pass "audio restart and session start keep the Asahi mic mapping gated"
 
