@@ -15,26 +15,49 @@ STUB
 cat >"$work/bin/pacman" <<'STUB'
 #!/bin/bash
 echo "$*" >>"$CALLS"
-exit "${PKG_STATUS:-0}"
+if [[ $1 == "-Q" ]]; then
+  [[ -e $INSTALLED ]] || exit 1
+else
+  (( ${PKG_STATUS:-0} == 0 )) || exit "$PKG_STATUS"
+  touch "$INSTALLED"
+fi
 STUB
 cat >"$work/bin/systemctl" <<'STUB'
 #!/bin/bash
 [[ $1 != is-active ]]
 STUB
+for helper in omarchy-mac-setup-system omarchy-mac-setup-user; do
+  printf '#!/bin/bash\nexit "${SETUP_STATUS:-0}"\n' >"$work/bin/$helper"
+done
 chmod +x "$work/bin/"*
+export INSTALLED="$work/installed"
+ln -s "$ROOT/bin/omarchy-setup-mac" "$work/bin/omarchy-setup-mac"
 export CALLS="$work/calls" PATH="$work/bin:$PATH"
 # Redirect legacy networkd cleanup to a temporary root as well.
 sed "s|/etc/systemd/network/|$work/network/|g" "$ROOT/install/hardware/network.sh" >"$work/network.sh"
+# Existing installs run the transition before invoking the package helpers.
+for migration in 1789132600 1789136143 1789140994 1789275235 1789780917; do
+  rm -f "$INSTALLED"
+  APPLE=0 bash -euo pipefail "$ROOT/migrations/$migration.sh"
+  [[ ! -e $INSTALLED ]] || fail 'non-Apple migration must not install add-on'
+  APPLE=1 bash -euo pipefail "$ROOT/migrations/$migration.sh"
+  [[ -e $INSTALLED ]] || fail 'historical and current migrations acquire add-on'
+  APPLE=1 bash -euo pipefail "$ROOT/migrations/$migration.sh"
+done
+[[ $(grep -c -- '^-S --needed --noconfirm omarchy-mac$' "$CALLS") == 5 ]] || fail 'repeated setup does not reinstall package'
 for apple in 0 1; do
   APPLE=$apple bash -eE -c 'source "$1"' bash "$work/network.sh"
-  APPLE=$apple bash -euo pipefail "$ROOT/migrations/1789275235.sh"
 done
-[[ $(grep -c -- '^-Q omarchy-settings-asahi$' "$CALLS") == 1 ]] || fail 'only Apple setup requires the add-on'
-[[ $(grep -c -- '^-S --needed --noconfirm omarchy-settings-asahi$' "$CALLS") == 1 ]] || fail 'only Apple migration installs the add-on'
+rm "$INSTALLED"
 status=0
-APPLE=1 PKG_STATUS=42 bash -euo pipefail "$ROOT/migrations/1789275235.sh" || status=$?
-[[ $status == 42 ]] || fail 'failed package installation leaves migration pending'
+APPLE=1 PKG_STATUS=42 bash -euo pipefail "$ROOT/migrations/1789780917.sh" || status=$?
+[[ $status == 42 && ! -e $INSTALLED ]] || fail 'failed installation stays pending'
 status=0
-APPLE=1 PKG_STATUS=1 bash -eE -c 'source "$1"' bash "$work/network.sh" || status=$?
-[[ $status == 1 ]] || fail 'fresh setup cannot silently omit the Apple default'
-pass 'Apple-only setup and migration require the packaged default and propagate failures'
+APPLE=1 bash -eE -c 'source "$1"' bash "$work/network.sh" || status=$?
+[[ $status == 1 ]] || fail 'fresh setup requires preinstalled add-on'
+status=0
+APPLE=1 SETUP_STATUS=43 bash -euo pipefail "$ROOT/migrations/1789780917.sh" || status=$?
+[[ $status == 43 ]] || fail 'setup failure stays pending after package acquisition'
+APPLE=1 bash -euo pipefail "$ROOT/migrations/1789780917.sh"
+grep -Fxq omarchy-mac "$ROOT/install/omarchy-apple.packages" || fail 'Apple fresh-install inputs require the package'
+pass 'Apple-only acquisition, historical ordering and interrupted transition are retryable'

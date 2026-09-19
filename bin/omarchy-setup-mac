@@ -1,0 +1,12 @@
+#!/bin/bash
+# omarchy:summary=Transition Apple Silicon support to the omarchy-mac add-on
+# omarchy:hidden=true
+set -euo pipefail
+omarchy-hw-apple-silicon || exit 0
+# Migrations run in the update terminal. Acquire from the configured signed
+# repository; do not silently fall back to an AUR recipe or change trust.
+if ! pacman -Q omarchy-mac >/dev/null 2>&1; then
+  sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm omarchy-mac
+fi
+sudo omarchy-mac-setup-system
+omarchy-mac-setup-user
