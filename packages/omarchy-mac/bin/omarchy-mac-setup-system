@@ -22,10 +22,13 @@ retire() {
   fi
 }
 
+retire "$root/etc/NetworkManager/conf.d/wifi_backend.conf" "$share/legacy/wifi_backend.conf"
+retire "$root/etc/modprobe.d/asahi-notch.conf" "$share/legacy/asahi-notch.conf"
+
 unit=omarchy-wifi-resume-fix.service
 retire "$root/etc/systemd/system/$unit" "$share/legacy/$unit"
 if "$root/usr/lib/omarchy-mac/wifi-supported"; then
-  if [[ -e $root/etc/systemd/system/$unit || -L $root/etc/systemd/system/$unit || -L $root/run/systemd/system/$unit ]]; then
+  if [[ -e $root/etc/systemd/system/$unit || -L $root/etc/systemd/system/$unit || -e $root/run/systemd/system/$unit || -L $root/run/systemd/system/$unit ]]; then
     echo "Preserving Wi-Fi unit override: $root/etc/systemd/system/$unit"
   else
     systemctl --root="${root:-/}" enable "$unit"
@@ -33,6 +36,8 @@ if "$root/usr/lib/omarchy-mac/wifi-supported"; then
 fi
 if [[ -z $root && -d /run/systemd/system ]]; then
   systemctl daemon-reload
-  systemctl cat "$unit"
+  # cat exits nonzero for an intentional mask; report it without failing setup.
+  systemctl cat "$unit" || true
   NetworkManager --print-config
+  modprobe --showconfig | grep -E '^options appledrm ' || true
 fi
