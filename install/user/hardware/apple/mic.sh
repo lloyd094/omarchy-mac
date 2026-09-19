@@ -1,4 +1,4 @@
 # Compatibility entrypoint for per-user finalization and historical migrations.
 if omarchy-hw-apple-silicon; then
-  omarchy-mac-setup-user
+  omarchy-setup-mac --user
 fi

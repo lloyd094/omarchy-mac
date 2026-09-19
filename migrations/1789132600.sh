@@ -1,3 +1,5 @@
-echo "Transition Apple Silicon configuration to omarchy-mac"
+echo "Enable the Asahi notch strip so the bar can use the full panel height"
 
-omarchy-setup-mac
+# install/hardware/apple/enable-notch.sh runs on new installs only.
+omarchy-hw-apple-silicon || exit 0
+source "$OMARCHY_PATH/install/hardware/apple/enable-notch.sh"
