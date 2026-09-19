@@ -1,286 +1,130 @@
 # Apple Silicon upstream integration plan
 
-Working plan for shared Apple Silicon development, encrypted installation, package delivery, and incremental integration into upstream Omarchy. Baseline recorded 2026-09-16; collaboration branch and merge tracker updated 2026-09-17.
+Shared working plan for bringing Apple Silicon support into upstream Omarchy. Updated September 19, 2026. Use this document to agree how the pieces fit together; use the existing workstream cards to track implementation and validation.
 
-## Objective and agreed direction
+DHH sets the release timeline. His [September 19 update](https://app.basecamp.com/5994298/buckets/48663438/messages/10294496118#__recording_10320638828) targets the first or second week of October, without a committed public release date. Contributors are invited to propose changes to the open sections below through PRs. Named contributors are invitations to develop those sections unless coordination is explicitly agreed; proposed repository homes and interfaces still need maintainer agreement.
 
-Develop a complete Apple Silicon Omarchy system together, distribute it to participating testers, and move its components upstream through focused contributions. The shared integration system and an individual upstream PR have different scopes.
+## What we are building
 
-- `omacom/omarchy-mac:quattro-upstream` is the published shared source branch, based on Scott's working `quattro-mac-live` integration.
-- The package pool is a preferred candidate for distributing the team's working system, including approved replacements for packages already in upstream repositories.
-- Encryption of Linux root and user data is a requirement. Choose and adapt the installer implementation that best meets the installation and recovery requirements.
-- The intended installation technique places a temporary installer at the tail of the allocated Linux space, installs an encrypted system ahead of it, and reclaims the installer space after the installed system boots successfully.
-- Prefer reusing Marcelo Alcantara's macOS interface and Apple boot preparation, combined with the existing prepared-install work, where they satisfy that design.
-- Asahi is the initial validation baseline. Aurora remains an explicit experimental option with its own tested package and boot configuration.
-- Upstream desktop contributions should remain separable from the temporary package service and installer implementation.
+One Apple Silicon Omarchy system that testers can install, developed together and brought upstream through focused contributions.
 
-The collaboration branch is what the team develops together. The collaboration package channel is what the team installs and tests together. Availability of official ARM packages makes that work easier; it does not remove the need to distribute changes that are not upstream yet.
-
-## Current state
-
-The following state establishes the implementation baseline. Recheck branch tips and package publication before dependent actions.
-
-| Area | State | Consequence |
+| Piece | Where we work | Intended destination |
 | --- | --- | --- |
-| Branches | Published code baseline is `0f5cb383`, including [#8942](https://github.com/omacom/omarchy/pull/8942) and [#9834](https://github.com/omacom/omarchy/pull/9834) | Track further integrations below |
-| Independent upstream fixes | Provisioning robustness and battery rounding are open as [#12056](https://github.com/omacom/omarchy/pull/12056) and [#12058](https://github.com/omacom/omarchy/pull/12058); Marcelo's [#9834](https://github.com/omacom/omarchy/pull/9834) and [#9835](https://github.com/omacom/omarchy/pull/9835) were also open | Coordinate existing submissions rather than reopen their content |
-| [#9835](https://github.com/omacom/omarchy/pull/9835) integration | The local integration already includes its rebased work: explicit menu package guards, architecture substitutions, the ARM fixture, pacman staging, and unified keyring work | Preserve completed adaptations and reconcile any later upstream changes |
-| Official ARM packages | Official edge contained 115 packages: 86 `aarch64`, 29 `any`; ARM RC/stable databases returned 404 | Official edge is a useful package source, not yet proof of a qualified full Mac installation |
-| Channel qualification | The ARM qualification allowlist in `install/helpers/pacman.sh` is empty | Do not describe channel switching as qualified merely because a database exists |
-| Steam | The FEX launcher and UI patch live in `omarchy-steam-fex`; the desktop installs and uses that package | Maintain the launcher in its package and the runtime integration in the desktop repository |
-| Public macOS installer | Inspection of Marcelo's public `main` at `33164982` found direct boot/root image placement and no LUKS/passphrase setup | Do not advertise that inspected installer as creating encrypted Linux roots |
-| Local encrypted integration | The local prepared-install contract requires LUKS2 and later installer-slice reclamation | Reconcile and test its producer and consumer; the contract alone does not prove an encrypted installation |
-| Image installer | The ISO repository documents encrypted installation and a remaining package-managed update gap for UUID-private ESP kernel/initramfs files | Kernel updates must be completed before release acceptance |
+| Desktop and shared helpers | `omacom/omarchy-mac:quattro-upstream`, distilling the accumulated fork into upstream-reviewable changes | Focused PRs to `omacom/omarchy` |
+| Persistent Apple configuration and services | `packages/omarchy-mac/` in that repository; PKGBUILD in `omarchy-mac/omarchy-pkgs-aarch64` | Independently versioned `omarchy-mac` add-on, with official recipe publication and any later source-repository split agreed with maintainers |
+| macOS app, Apple boot preparation and encrypted Linux installation | Reuse [Marcelo's macOS installer](https://github.com/maralcbr/omarchy-mx-mac/tree/main/apps/omarchy-apple-installer) and suitable [omarchy-mac-iso](https://github.com/omarchy-mac/omarchy-mac-iso) components in a shared installer project | Companion installer repository, with reusable Linux installation changes proposed to `omacom/omarchy-iso`; exact homes to agree |
+| Packages testers install | Use [omarchy-pkgs-aarch64](https://github.com/omarchy-mac/omarchy-pkgs-aarch64) for the release, completing signing and validation of the compatible package set | Official Omarchy packaging or the appropriate upstream providers as components are accepted |
 
-Official ARM edge packages identify the Omarchy keyring key `40DFB630 FF42BCFF B047046C F0134EE6 80CAC571` as their signer, also used for x86 edge. The database itself is unsigned. This signing identity is compatible with [#9835](https://github.com/omacom/omarchy/pull/9835)'s `SigLevel = Required DatabaseOptional`; official ARM packages do not need a new fork trust root. Pacman verifies package bytes against the trusted keys when installing. The supplemental collaboration packages still need an agreed signing and trust-bootstrap route, and the complete package set still needs qualification.
+The collaboration **branch** is what we develop together. The collaboration **channel** is what testers install together. Official ARM packages help, but we still need to distribute desktop and add-on changes that have not landed upstream.
 
-Two package-source mechanisms currently coexist in `quattro-mac-live`: [#9835](https://github.com/omacom/omarchy/pull/9835)'s architecture-aware templates, whose edge template points `[omarchy]` at official ARM edge, and `install/hardware/apple/pacman.sh` with migration `1788200000.sh`, which appends `[omarchy-aarch64]` with `Optional TrustAll`. Both mechanisms are in the source tree, but a fresh Apple installation does not necessarily activate both: with the qualification allowlist empty, `omarchy_pacman_finalize` preserves the image's existing configuration rather than installing the official template. The Apple leaf then adds its stanza if absent. Inventory the actual configuration on each installation path; the collection decision must resolve both mechanisms and previously written configuration.
+The main release initiatives already cover [M1/M2 launch](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294470280), a [unified installer](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10296876777), [ARM package infrastructure](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294467178) and a [unified kernel](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294477079). This plan connects those outcomes to the Apple work. Marcelo's [release outline](https://app.basecamp.com/5994298/buckets/48646031/documents/10294385193) includes the installer, M1/M2 Pro/Max, GPU support, USB-C displays, Touch ID, MLX and encryption. Agree their acceptance criteria together; the add-on is one part of that system.
 
-## Shared source development
+## Shared development and upstream contributions
 
-Use `quattro-upstream` for the working integration. The default is a focused change designed for eventual upstream submission, with attribution preserved. Exceptions are allowed for experiments and temporary integration support, but their status must be explicit in the commit message. A useful integration commit need not already be ready to cherry-pick into upstream unchanged.
+`quattro-upstream` is the attempt to distill `omarchy-mac` into an upstream-mergeable branch. It brings the accumulated work onto upstream Quattro with Marcelo's [#9835](https://github.com/omacom/omarchy/pull/9835) adapted in. It is the shared review starting point, not a completed upstream merge.
 
-Use a consistent commit-message trailer: `Upstream-Status: candidate`, `Upstream-Status: experimental`, or `Upstream-Status: temporary`. Experimental and temporary commits must explain the reason and the condition for removal or upstream submission in the body, with a tracking issue when available. This makes classification mechanically extractable without requiring the collaboration branch to be an already polished PR series. Apply the convention to new work; do not rewrite shared history just to add trailers.
+Marcelo, Scott, Wes and Naeem will coordinate the add-on extraction and preparation of the remaining upstream merge. After #9835 lands, compare its actual merged implementation with the distilled branch, reconcile differences and prepare the remaining desktop delta. Ready independent fixes can continue through review throughout this work.
 
-Keep macOS disk operations, image-building code, package recipes, and service-specific trust bootstrap in their appropriate projects. Target-side runtime support can remain in the desktop tree. Preserve the current scope exclusions for parked disk-conversion tools and MLX unless the group deliberately changes scope; reuse installer code in the installer project where needed.
+Keep contributions focused and preserve attribution. Mark new commits with `Upstream-Status: candidate`, `Upstream-Status: experimental` or `Upstream-Status: temporary`; explain the purpose and exit condition for experiments and temporary glue. Preserve shared history by default. Coordinate any exceptional rewrite; submission branches can be cleaned independently.
 
-Build on the published starting point and coordinate contributions through the shared branch. Default to history-preserving integration of upstream. Any exceptional shared-history rewrite needs explicit coordination. Submission branches may be rebased and cleaned independently without forcing all testers and contributors to follow rewrites.
+Installer source, kernel recipes, MLX implementation and repository trust bootstrap belong in their appropriate projects. The upstream desktop submission must also exclude `packages/omarchy-mac/`; its shared interfaces, package dependency and migrations remain separately reviewable. ALS and Steam can be tested in the complete system while receiving separate upstream review. Steam's launcher is supplied by `omarchy-steam-fex`.
 
-Maintain the working integration branch and active submission branches. Continue the provisioning and battery-rounding reviews, track [#9835](https://github.com/omacom/omarchy/pull/9835) with Marcelo, and extract the remaining upstream contributions when ready. ALS and Steam integration can be tested in the full system while receiving separate upstream review where appropriate.
+The [dated merge tracker](upstream-integration-reference.md#upstream-merge-record) records the existing provisioning, battery, clock/weather, test-runner and Apple foundation contributions. Recheck their status and reconcile accepted changes before preparing submissions.
 
-## Repository boundaries and upstream destinations
+## The `omarchy-mac` add-on
 
-Keep the Apple installer in a separate repository from the desktop integration branch. Agree its shared home with Marcelo Alcantara and the maintainers, preferably by reusing or extracting his existing installer project with history and attribution preserved. Incorporate suitable components from `omarchy-mac-iso` there. The repository name, ownership, and eventual official home remain decisions for the group.
+Persistent Apple defaults and support services belong in the add-on; shared discovery and desktop interfaces stay in Omarchy. The package complements `omarchy` and `omarchy-settings`. It neither provides nor replaces them, selects no kernel, contains no installer and installs no repository trust configuration.
 
-Upstream integration can land across several official repositories. The intended outcome is a supported Apple installation path using upstream Omarchy packages and shared Linux provisioning, allowing the desktop fork to be retired. The macOS application can remain a maintained companion project. Upstream already separates image construction and installation in [omacom/omarchy-iso](https://github.com/omacom/omarchy-iso) from the runtime and system/user setup supplied by Omarchy packages.
+The source directory is independently buildable, with its own version, MIT license, attribution, tests and staging/install script. Preserve original commit references when extracting code. The separate PKGBUILD pins a collaboration-repository commit and packages only that directory. Propose official recipe publication with the packaging maintainers; keep the candidate available through the agreed collaboration channel while that work proceeds.
 
-| Component | Collaboration home | Proposed upstream destination |
-| --- | --- | --- |
-| macOS app, try/install interface, APFS preparation, and Apple boot preparation | Shared Apple installer repository | An official companion repository, subject to maintainer agreement |
-| Temporary Linux environment, image construction, encrypted installation, and installer-space reclamation | Installer project, reusing shared Linux installation machinery | Reusable installer changes proposed to `omacom/omarchy-iso`; Apple-specific components retained in the agreed installer project where appropriate |
-| Hardware detection, Apple defaults, desktop behavior, and shared system/user provisioning | `omacom/omarchy-mac:quattro-upstream` | `omacom/omarchy`, with package-owned settings in the relevant settings package |
-| Kernel, firmware, and package-managed boot updates | Relevant package source and recipe repositories | Official Omarchy packaging or the relevant upstream provider, with runtime integration in Omarchy as needed |
-
-Share Linux provisioning and package definitions across installation paths. The Apple installer should consume those interfaces and recorded package builds rather than carry a second evolving copy of desktop setup. Installer-owned reclamation code may need to run after the first installed boot; define how it is delivered and retired without assuming that every installed helper belongs in the desktop repository.
-
-Coordinate releases with a versioned manifest recording the macOS installer revision, Linux installer/image revision and artifact identity, exact package set, and handoff format version. Test the producer and consumer together and reject incompatible handoffs before disk mutation. This release manifest complements the per-installation disk and partition manifest described below; it contains no encryption credentials.
-
-The existing [M1 + M2 launch card](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294470280) covers the macOS app's try and install flows. The [unified-installer card](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10296876777) establishes the direction toward shared provisioning, and [Omarchy ARM](https://app.basecamp.com/5994298/buckets/48663438/card_tables/cards/10294467178) covers package mirroring across ARM platforms. Coordinate this work through those existing efforts. The exact repository destinations and tail-installer technique are proposals to validate and review; those cards do not establish acceptance of a particular implementation.
-
-## Apple customization approach
-
-Prefer package-owned configuration and services for persistent Apple defaults, shared helpers for hardware discovery, and existing lifecycle mechanisms for procedural work. This is a proposed direction to validate with Marcelo and upstream maintainers. Agree package ownership and interfaces before expanding the approach; keep ready upstream fixes moving while individual customizations are improved.
-
-| Kind of customization | Preferred approach | Examples and boundaries |
-| --- | --- | --- |
-| Persistent system defaults | Package-owned configuration in the component's supported vendor location, with administrator overrides preserved | NetworkManager Wi-Fi backend, notch and function-key settings; retain any required initramfs rebuild |
-| Platform package selection | An Apple installation profile or dependency package, consuming shared package definitions | Audio and firmware requirements; keep optional video acceleration separate from the required baseline |
-| Background and event-driven behavior | Package-owned services and narrowly scoped helpers | Wi-Fi resume recovery and microphone mapping; retain device restrictions and actual-failure detection |
-| Desktop defaults | A platform defaults layer with explicit precedence below user choices | Trackpad behavior and Apple keybindings; avoid repeatedly appending settings to user files |
-| Hardware discovery and application capabilities | Shared helpers that recognize the relevant devices or capabilities | Display backlights, batteries, trackpads, and render-device availability; validate applicability before broadening an Apple-only workaround |
-| Kernel and boot maintenance | Existing package/kernel lifecycle hooks with explicit ownership and recovery behavior | Initramfs and ESP updates; use the intended installed kernel rather than assuming the running kernel is the target |
-
-A configuration drop-in supplies data to an existing component; an execution hook runs code at a lifecycle event. Use each for its actual purpose. Introduce a new Omarchy hook only for a demonstrated procedural variation, with defined inputs, ordering, privileges, failure propagation, and retry behavior. Straightforward device recognition can remain in shared code without an additional extension framework.
-
-Marcelo's [Asahi settings proposal](https://github.com/omacom/omarchy/pull/9835#discussion_r4003753056) is a concrete starting point: an Apple add-on owns the NetworkManager Wi-Fi configuration, while the installation profile selects it. His reply reports local testing and says the companion package/profile changes still need to land. Resolve that publication dependency before relying on it during setup or migration.
-
-### Initial add-on candidate (2026-09-18)
-
-The agreed source home is `packages/omarchy-mac/` inside this collaboration repository, alongside the desktop integration. The directory has its own `0.1.0` version, MIT license, extraction attribution, tests and staging script and builds without files outside it. Keep a future repository split possible. The separately maintained PKGBUILD lives in `omarchy-mac/omarchy-pkgs-aarch64` on `feature/omarchy-mac-package` and pins an immutable collaboration commit.
-
-Implementation started in the isolated `integrate/omarchy-mac-package` worktree at `350c4655`. The first reviewable commit packages Wi-Fi recovery; separate commits add microphone/policy support, preserve setup choices, delegate desktop interfaces, and migrate existing users. The add-on supplies NetworkManager's iwd vendor default, the existing Wi-Fi helper and packaged service, the unchanged microphone mapper and user service, WirePlumber headset priority, and the notch module default. It complements `omarchy` and `omarchy-settings`, provides/replaces neither, selects no kernel, and includes no installer or trust configuration.
-
-Small system and per-user setup entrypoints preserve generated-file backups, custom configuration, masks and explicit disables. Wi-Fi stays gated to Apple Silicon BCM4378/BCM4387 and excludes BCM4388; the shared detector excludes Intel/T2 and other ARM hardware. Offline user setup needs no bus, and first-session activation uses the existing desktop lifecycle. Microphone gain/mute and device selection behavior remain unchanged, including saving state before audio restart. Historical leaf paths remain compatibility wrappers. Historical migration filenames remain intact and acquire the package before using it; a new migration reaches users whose earlier markers are already complete. Package and setup failures remain pending and retryable.
-
-Fresh Apple package inputs now include `install/omarchy-apple.packages`; image builders must consume it before hardware setup, which refuses a missing add-on. The unresolved `omarchy-settings-asahi` requirement is replaced by `omarchy-mac`. A matching runtime/settings/add-on transaction transfers each helper and the microphone unit to exactly one owner without overwrite workarounds. Candidate-only build and transaction tools live with the recipe. Package publication remains separate from source integration.
-
-Automated candidate validation covers independent builds, package metadata/source revision, fresh and full-baseline upgrade transactions with dependencies enabled, repeated setup, interrupted migrations, multiple users, effective configuration, custom fragments and masks, Wi-Fi recovery failures, and microphone lifecycle behavior. Transaction rehearsals disable install hooks/scriptlets; signed repository selection, the full companion transaction, and broader M1/M2 qualification remain release gates. The later local M2 trial exercised its normal package hooks, reboot and suspend/resume; see the validation record for its narrower package set and preserved overrides. Aurora requires separate evidence. See `plans/omarchy-mac-package-validation.md` for revisions, artifacts, test results and limitations.
-
-The reviewed extraction reduces the desktop delta by **1,279 lines** at `6607f4bb` (607 runtime/setup/migration lines and 672 test lines). Including the audio-restart fix, optional mapper guard, installed-package migration guard and their tests at `ea58eb2c`, the combined reduction is **1,123 lines**. Package source, plans and documentation are excluded from these counts. Upstream desktop PRs must exclude `packages/`; it remains independently buildable in the collaboration repository. Desktop bindings, trackpad/Electron defaults, ALS, HID/initramfs, boot, snapshots and installer work stay outside the add-on release.
-
-
-Review and physical-trial update: The add-on remains on `integrate/omarchy-mac-package`; it is not merged into `quattro-upstream`, which remains at `350c4655`. The original runtime/settings/add-on candidate trio was built from `b76c6d79`, with scratch transaction checks. That `/tmp` bundle did not survive reboot. The durable live trial instead pairs add-on `0.1.0-1` from `b76c6d79` with a minimal reconstruction of the installed runtime (`4.0.2-202609092055.mac1`); settings remains `4.0.2-202609092055` and the candidate was subsequently dev-linked and booted successfully on 2026-09-19 at `3f9f7177`. Ownership transfer and offline rollback were rehearsed with dependencies enforced, and the live transaction and package integrity checks passed. See `plans/omarchy-mac-package-validation.md` for the M2 results, restart experiments, separate source commits and remaining gates.
-
-## Package delivery for collaboration
-
-### Repository precedence is intentional
-
-The collaboration source must be able to provide both new package names and modified versions of existing packages, particularly `omarchy` and `omarchy-settings` or their development variants. Merely putting a source above `[core]` is insufficient if an earlier `[omarchy]` or fork repository still wins for those names.
-
-Proposed logical order for participating testers:
-
-1. The team's selected collaboration collection, containing explicitly approved overrides and missing packages.
-2. The agreed base repositories, supplied through the pool or directly from official Omarchy, Arch Linux ARM, and Asahi sources.
-
-This is a required behavior, not a claim that the pool already exposes a team-specific collection with that exact layout. Agree the implementation with its maintainer. A lower-priority source limited to missing names can still be useful, but it cannot by itself implement the override channel.
-
-Record the intended provider of every override. Test initial selection, upgrades, equal-version cases, locally newer packages, and leaving the channel. Repository order alone does not establish that already installed packages transition correctly.
-
-### What the pool can contribute
-
-The inspected pool provides upstream mirrors, a Factory for additional builds, signed databases, and documented promotion/testing workflows. Its official Omarchy ARM source contained the same 115 package names counted in official edge. Asahi sources were present in the inspected edge inventory but absent from its RC/stable inventories. Pool ring names are distinct from official Omarchy channel names.
-
-The pool setup inserts its include above `[core]` and retains existing sources. Review the complete resulting configuration, including older fork repositories, before using it for a release. Decide whether to adopt a coherent pool-managed base or a supplemental collaboration collection; do not assemble an accidental mixture through fallback sources.
-
-The aarch64 edge configuration endpoint returns no repositories with no source selection, with `with=asahi`, and with `with=asahi,asahi-alarm`; RC and stable each return five repositories. Resolve this configuration/publication issue with the pool maintainer before directing testers to edge setup. Provide the tested URLs, release identity, and responses.
-
-### Package inventory and builds
-
-Create a manifest mapping each required package to its provider, source commit, recipe, version, architecture, signer, and purpose. Distinguish baseline requirements from optional applications; an absent optional package need not block first encrypted-install validation.
-
-The initial publication worklist contains eight packages absent from official ARM edge:
-
-| Package | Recorded publication gap |
+| First-release component | Package responsibility |
 | --- | --- |
-| `cursor-bin` | Absent from official ARM edge; present in the fork's unsigned GitHub-release repository |
-| `avd-fw` | Absent from official ARM edge; present in the fork repository |
-| `libva-v4l2_request-avd` | Absent from official ARM edge; present in the fork repository |
-| `obsidian-appimage` | Absent from official ARM edge; present in the fork repository |
-| `omarchy-steam-fex` | Absent from official ARM edge; present in the fork repository |
-| `pinta` | Absent from official ARM edge; present in the fork repository |
-| `vi` | Absent from official ARM edge; present in the fork repository and reported among the pool's Factory builds |
-| `omarchy-mac` | Initial standalone add-on candidate now supplies the transferred Apple defaults/services. Recipe and recorded candidate validation are separate from rolling-feed publication |
+| Wi-Fi backend | NetworkManager vendor configuration selecting iwd |
+| Wi-Fi resume recovery | Existing restricted helper and package-owned system service |
+| Microphone mapping | Existing helper and user service, preserving gain, mute and device choices |
+| Headset microphone priority | WirePlumber vendor policy |
+| Notch setting | Existing module default, preserving administrator overrides |
 
-Marcelo's [package repository](https://github.com/maralcbr/omarchy-pkgs) is an existing source of Apple Silicon settings work. Checked 2026-09-17: runtime channel 32 points to `asahi-quattro-a67d7f78`, which publishes `omarchy-settings-dev-4.0.3.r6962.ga67d7f7-1-aarch64.pkg.tar.xz` and its detached signature. The inspected `asahi-quattro` recipe provides `omarchy-settings`, but does not declare `omarchy-settings-asahi`; the inspected release assets and latest listed stable supplemental database did not contain that separate name. The integration now requests the independently versioned `omarchy-mac` add-on instead of the unresolved `omarchy-settings-asahi` name. Reuse his settings work, while checking file ownership and compatibility with our recorded runtime/settings pair before selecting a package for the collaboration channel.
+Use small explicit system/user setup entrypoints. Fresh Apple installations must acquire the package before hardware setup; existing machines need a retryable transition from the old `omarchy-settings-asahi` requirement. Preserve historical migration compatibility and support offline provisioning and first-session activation without requiring a running user bus during installation. Retain microphone state saving before audio restart.
 
-Begin recipe and publication work from this inventory and update entries as packages land. Use the listed alternate providers where appropriate. Asahi already supplies its kernel, audio components, and Widevine. Prioritize packages required for the baseline installation ahead of optional applications.
+Validate the runtime/settings/add-on transaction together: each transferred file has exactly one owner, with no broad overwrite workaround. Retire only recognized generated configuration, preserve administrator changes, service masks and intentional disables, and check effective configuration for older overrides. Package publication must be available before setup or migration relies on it.
 
-Build the selected runtime/settings pair from the same recorded `quattro-upstream` revision. Testers should receive a packaged system; contributors can continue dev-linking for development. Do not assume mirrored official `omarchy` packages contain the team's branch changes.
+Bindings, trackpad defaults, Electron workarounds, ambient-light support, HID early-loading, function-key/initramfs handling, boot management, snapshots and installer work stay outside this first package. The wider direction remains package-owned system defaults, a desktop platform layer below user choices, shared hardware discovery and explicit package/boot lifecycle ownership. Those broader changes are separate work, not additions to this initial package scope.
 
-### Questions for the pool maintainer
+## Packages testers install
 
-- Can participating teams select a collection or channel with approved package overrides and independent promotion criteria?
-- Can the Factory build the runtime/settings pair and Mac extras from exact source and recipe commits?
-- How are complete release sets pinned, retained, retrieved, and withdrawn, including dependencies needed to reproduce installer images?
-- Who reviews recipes, approves builds, and promotes Mac releases? What is the operational fallback if the service or a maintainer is unavailable?
-- How are package and database signing keys authenticated, rotated, and recovered? Factory package signatures must be accounted for alongside mirrored upstream signatures.
-- Why does aarch64 edge configuration return no repositories regardless of the tested `with=` selections, while RC and stable are populated and edge databases exist?
-- How do testers enter and leave the collaboration collection without unresolved dependencies or an unintended mixture of versions?
+Use [omarchy-mac/omarchy-pkgs-aarch64](https://github.com/omarchy-mac/omarchy-pkgs-aarch64) as the initial collaboration package source for testers and the release. Complete its publication and signing work to provide one reproducible package set for both fresh installations and existing testers. It must include new names such as `omarchy-mac` and the needed branch-built replacements for `omarchy` and `omarchy-settings`. Record exact source and recipe revisions, versions, providers and signers.
 
-### Signing and transition
+Repository precedence must select those intended replacements. Test installation, upgrades, equal versions, locally newer packages and leaving the channel. Coordinate ownership across runtime, settings and add-on packages. Availability of an official ARM package does not establish that it contains the collaboration changes or that the complete installation path is qualified.
 
-Use authenticated signing keys and signature enforcement for the shared release path. Replacing `Optional TrustAll` is a deliverable. Naeem's signing issue [#394](https://github.com/omacom/omarchy-mac/issues/394) and the pool's Factory are possible routes; select the route with the collaborators rather than silently requiring both.
+The [package pool](https://omarchy-pool.firemanxbr.org/) remains an open question for sub-team experimentation: could it let groups build and test new ideas in independently managed collections, then promote agreed changes into the release package set? Explore build, signing, promotion, retention and rollback with its maintainer. Adopting the pool is not a release dependency; proceed with `omarchy-pkgs-aarch64` while that exploration continues. The [dated package inventory and pool observations](upstream-integration-reference.md#package-delivery-observations) remain inputs to recheck.
 
-Trust initialization belongs in installer/package configuration. Upstream runtime changes should not hardcode trust in a temporary private service. Document all actual trust roots, including Arch Linux ARM and Asahi, official Omarchy, the pool's database and Factory signing, and any retained fork source.
+Signing and a tested transition away from the existing unsigned repository configuration are release deliverables; [#394](https://github.com/omacom/omarchy-mac/issues/394) records that gap. Trust bootstrap belongs in installer/package configuration. Changing future templates alone does not update existing machines.
 
-Retire the unsigned repository leaf only when its replacement works for both fresh installations and existing testers. Deleting the leaf and migration from a future source branch does not remove a stanza already written to a user's machine. Provide a separately tested transition that installs the required keys, changes repository order, replaces packages where necessary, and removes obsolete configuration without stranding users.
+**Release and packaging maintainers:** please define the complete tester set delivered through `omarchy-pkgs-aarch64`, name a signing/publication owner, and explain how fresh installs and existing testers reach the same versions and recover from failed updates. With Ryan and upstream maintainers, agree official recipe homes and ARM qualification. Teams interested in the pool can explore its experimental collections separately, including branch-built overrides and the recorded ARM configuration gaps.
 
-Qualify each exact tested configuration. A successful run with pool-built overrides validates that collaboration configuration; it must not be presented as proof that official ARM edge alone is qualified. Record the repository URLs, ordering, signatures, package identities, and test environment with the result. Coordinate official ARM qualification and future RC/stable publication with upstream maintainers in parallel.
+## Installer
 
-## Encrypted installer
+Prefer reusing [Marcelo's macOS installer](https://github.com/maralcbr/omarchy-mx-mac/tree/main/apps/omarchy-apple-installer) for its interface and Apple boot preparation alongside suitable encrypted-installation work from [omarchy-mac-iso](https://github.com/omarchy-mac/omarchy-mac-iso). Keep the installer separate from the desktop integration repository and preserve history and attribution when extracting existing code. Agree its shared repository home and the reusable Linux interfaces with Marcelo and the maintainers.
 
-Prefer Marcelo's macOS interface and boot preparation where suitable, combined with the temporary-installer placement and encrypted installation developed in `omarchy-mac-iso`. Compare the local prepared-install integration against both current public projects, then reuse the components that satisfy the shared installation contract.
+Marcelo and Eryk have been working on the macOS installer. Wes has documented the strategies used by the `omarchy-mac-iso` encrypted installer. That documentation is an input to the shared design.
 
-### Installation lifecycle
+**Marcelo and Eryk, with the Linux installer contributors:** first describe the installer working today—source/runtime branch, image, package set, tested machines and try/install flows, including whether it has been tried with #9835 or the distilled branch. Then propose the shared home, macOS-to-Linux handoff, artifact delivery and ownership of boot updates and recovery. **Wes:** please help review that proposal against the encrypted-install strategies you documented; any implementation role remains to be agreed. The lifecycle below is the intended design to validate against those implementations, not a claim that the current app already performs it.
 
-1. From macOS, prepare the Apple boot environment and allocate the Linux extent. Place the temporary installer at its tail, leaving the target space ahead of it. APFS resizing remains a macOS operation.
-2. Record a bound handoff manifest identifying the disk, partitions, approved geometry, artifacts, and installation. Validate it before target writes.
-3. Boot Linux, collect the passphrase, create LUKS2 in the target extent, and create the agreed Btrfs layout, initially `@`, `@home`, and `@log` as appropriate to the provisioning contract.
-4. Install the recorded signed package set, configure the selected collaboration source, and run shared system/user provisioning. Include `omarchy-mac` from the Apple package manifest before hardware setup.
-5. Configure the installed kernel and initramfs so the encrypted root boots independently of the temporary installer. Reboot into that root and verify the active installation identity and boot independence.
-6. Reclaim only the recorded installer partition. Extend the root partition without moving its start, resize the active encrypted mapping, and grow the Btrfs filesystem in that order.
+Linux root and user data must be encrypted. Identify the boot components that remain unencrypted; keep encryption credentials out of logs, the temporary installer and unencrypted boot files.
 
-Linux root and user data must be encrypted. Identify boot components that remain unencrypted; do not describe this as encryption of macOS or the entire physical disk. No reusable encryption credential may remain in logs, the temporary installer, or unencrypted boot files.
+1. From macOS, prepare Apple boot and allocate the Linux extent. Place the temporary installer at its tail, with the target system ahead of it. APFS resizing remains a macOS operation.
+2. Record the disk, partition identities, geometry and artifacts in a handoff manifest. Validate them before target writes; store no secrets in the manifest.
+3. Boot Linux, collect the passphrase and create LUKS2 with the agreed Btrfs layout.
+4. Install the recorded signed package set, including `omarchy-mac` before hardware setup, and run shared system/user provisioning.
+5. Boot the encrypted installed system independently of the temporary installer and verify that independence.
+6. Delete only the recorded installer partition, then grow the root partition in place, the encrypted mapping and the filesystem in that order.
 
-### Interruption and recovery requirements
+Keep the temporary installer until independent boot succeeds. Installation and reclamation must be retryable, checking actual disk state before each mutation. Test interruption and recovery, including snapshot restore with matching boot files and kernel modules. The [recovery constraints](upstream-integration-reference.md#installer-recovery-constraints) retain the detailed checks.
 
-Installation and reclamation must be explicit, restartable state machines. Keep durable progress and revalidate the actual disk state before each mutation; a progress marker alone does not authorize a write.
+The existing bootstrap can remain a developer/recovery route. The recommended public installer must meet the encrypted lifecycle; the plan does not require two equally supported public installers.
 
-Test interruption before and after installer-partition deletion, root-partition growth, encrypted-mapping resize, and filesystem growth. A retry must recognize completed stages without deleting or formatting a different partition. Validate exact identities and geometry, not labels alone. Preserve unrelated Linux installations, macOS, and recovery partitions.
+## Kernel, graphics and hardware scope
 
-Retain the temporary installer until a successful independent installed boot. Document recovery for failed installation, failed first boot, interrupted reclamation, and failed updates. Reclamation should leave an already bootable installation recoverable even if subsequent growth steps fail.
+Asahi is the first validation baseline. Develop an opt-in Aurora preview with its own recorded package set, supported models, updates and recovery. Keep kernel choice independent of the desktop channel and preserve the default for people who have not opted in. Fresh preview installation and switching an existing system require separate evidence.
 
-Resolve package-managed kernel/initramfs ownership and ESP update hooks as part of this work. The existing UUID-private ESP design and managed-kernel-update proposal are inputs to review, not a requirement to retain that exact layout. Test snapshot recovery together with the kernel/modules state, because restoring an encrypted root does not necessarily restore external boot files.
+Marcelo's [public installer documentation](https://github.com/maralcbr/omarchy-mx-mac#omarchy-for-apple-silicon-macs), read September 19, reports an Aurora RC option for particular M1 Pro and M2 Max models. We have not validated that path against the distilled branch or package candidate. Confirm its exact builds and behavior before adopting it into the shared delivery path.
 
-The existing bootstrap may remain a developer or recovery route. Do not imply it creates encryption, or require two equally supported public installers. The recommended release path must meet the encrypted lifecycle above.
+**DJ, Eryk, Ryan Murray and other kernel/graphics contributors, with Marcelo:** please propose the baseline and preview stacks here. Identify the compatible kernel, modules, headers, firmware/boot components and Mesa builds; named models; update and fallback behavior; and physical-hardware acceptance checks. Explain how the Apple proposal fits the wider unified-kernel initiative. Audit `linux-asahi` assumptions and distinguish running, installed and next-boot kernels.
 
-## Asahi and Aurora
+**M3 is a candidate for labelled early support in the first release**, potentially without GPU acceleration, subject to package availability and testing. Asahi's [September announcement](https://asahilinux.org/2026/09/m2-episode-1/) describes M3 laptop/iMac support and limitations; it does not establish what our ALARM package set delivers. Naeem is preparing the Hyprland software-renderer fix PR and following its review toward a merge. Record the delivering package, eligible models, usable-desktop results and install/update/recovery evidence before offering this path. M3 MLX/ANE support is a separate capability, not a prerequisite for a software-rendered desktop.
 
-Start acceptance on Asahi. Marcelo's installer already has an experimental Aurora catalog selection; preserve that opportunity while separating kernel choice from the desktop release channel in the underlying configuration.
+**Chris and the video-acceleration contributors:** please confirm your scope and propose first-release decoder/encoder capabilities, dependencies, packages, hardware coverage and application tests, building on the existing Andreas/Miguel work.
 
-Establish the actual package provider, pinned source, modules, headers, firmware/device-tree requirements, initramfs handling, ESP updates, reboot detection, and recovery for each supported kernel selection. Audit hardcoded `linux-asahi` assumptions, including package preflight and xpadneo headers.
+**DJ:** please describe how the working Touch ID implementation joins the shared system: source and packages, kernel/userspace dependencies, tested models, enrollment and authentication. Keep any Secure Enclave disk-encryption work distinct from biometric authentication.
 
-Kernel discovery must distinguish running, installed, and selected-for-next-boot kernels, including systems with multiple versions. Avoid replacing a hardcoded name with an arbitrary first match. Removing name assumptions may reduce the downstream delta; it does not prove Aurora requires no other runtime changes. Validate those claims on supported hardware.
+## MLX and its graphics dependencies
 
-## Completed adaptations and remaining upstream work
+Josh's [M1/M2 MLX/ANE release card](https://app.basecamp.com/5994298/buckets/48646031/card_tables/cards/10264591646), read September 19, bounds the initial capability around installation, GPU inference, stated ANE coverage, non-fatal upgrades and documented limits. Later-chip support, full performance parity and broader coverage have separate scope.
 
-### Merge tracker
+**Josh:** please develop the MLX/CoreML/ANE integration proposal here, using that bounded release scope. Identify what ships by default or optionally, the source/package/wheel set, Mesa/Honeykrisp and kernel/ANE/compiler dependencies, supported models and acceptance demonstrations. State functional readiness separately from performance targets, and identify what assistance is needed.
 
-This is the set of upstream contributions we are advocating for the collaboration system. Upstream PR status and inclusion in our branch are tracked separately: a change can be running successfully here while its upstream PR remains open. PR statuses and head revisions were checked on 2026-09-17. Inclusion below refers to the collaboration branch at `0f5cb383`; adapted or cherry-picked equivalents need not share the upstream commit hash.
+The [Honeykrisp package proposal](https://app.basecamp.com/5994298/buckets/48646031/card_tables/cards/10320749071) is a shared graphics dependency: Josh brings the ML requirements and patches, graphics contributors review integration and desktop behavior, and packaging maintainers deliver the agreed tested Mesa build. Define that build together so the installer delivers a compatible graphics and ML stack.
 
-| Contribution | Upstream source branch and checked head | Upstream status | In the collaboration branch? | Next action |
-| --- | --- | --- | --- | --- |
-| [#9835 — Apple Silicon foundation](https://github.com/omacom/omarchy/pull/9835) | `maralcbr:omacom/asahi-overlay` — `980ce7eb` | Open | Yes, rebased/adapted foundation including the availability, pacman, keyring, and settings work | Coordinate Marcelo's review; compare the final merged tree and retain only our remaining delta |
-| [#12056 — Provisioning robustness](https://github.com/omacom/omarchy/pull/12056) | `scottjones:pr/provisioning-robustness` — `400dad0d` | Open | Yes, equivalent first-run, DMI, and locate-test fixes | Continue upstream review independently of the Apple platform submission |
-| [#12058 — Battery rounding](https://github.com/omacom/omarchy/pull/12058) | `scottjones:pr/battery-rounding` — `9aa09a0b` | Open | Yes, rounding commit `305a4b3e` | Continue upstream review; keep separate from the Apple-specific platform delta |
-| [#8942 — Clock/weather popup anchoring](https://github.com/omacom/omarchy/pull/8942) | `scottjones:panels-anchor-to-widget` — `7a341007` | Open | Yes, equivalent commit `be1c114b`, pushed to `quattro-upstream` | Advocate the existing general-desktop PR; keep it out of D. Five focused tests passed, and Scott confirmed the live result after shell reload |
-| [#9834 — Refuse shell tests as root](https://github.com/omacom/omarchy/pull/9834) | `maralcbr:omacom/no-root-mount-tests` — `79c919b9` | Open | Yes, cherry-picked as `0f5cb383` with Marcelo's authorship and source reference preserved | Advocate Marcelo's existing PR separately from D. Syntax checks and the normal-user Windows VM regression test pass; unprivileged user-namespace checks verify runner root refusal, the explicit fixture-only override, and unconditional Windows mount-test root skipping |
+## First milestone and existing work
 
-Additional work to prepare for submission:
+`recorded signed packages → encrypted fresh install → independent boot → reclaim installer space → package/kernel update → reboot → recovery`
 
-| Work | Branch or component | Collaboration status | Submission path |
-| --- | --- | --- | --- |
-| Remaining Apple platform support (D) | `pr/apple-silicon` — `e0b622a2` | Included; this extraction branch does not contain [#8942](https://github.com/omacom/omarchy/pull/8942) | Prepare the remaining delta after reconciling [#9835](https://github.com/omacom/omarchy/pull/9835) and package prerequisites; no upstream PR recorded yet |
-| Keyboard ambient-light control (E) | `pr/keyboard-als` — `071e54e8` | Equivalent integration commit `785ba933` included | Prepare an independent PR; no need to wait for unrelated installer work |
-| Steam/FEX | `omarchy-steam-fex` package and desktop integration | Desktop integration included; package publication/signing remains part of the delivery work | Track the package recipe/publication and any separate runtime submission; `pr/steam-fex` now points at D and is not a separate active series |
-| Required Mac packages | Eight-package publication worklist above | Dependencies have mixed publication/signing status | Add recipe PR links, build revisions, and published versions as submissions are created |
-| Encrypted installer and Aurora integration | Installer projects and package catalogs | Implementation and lifecycle validation work remains | Track in those projects; do not fold their source into the desktop PR |
+Use physical Macs for firmware, graphics, audio, suspend, encrypted boot and recovery; ARM VMs for package transactions; disposable storage for interruption tests; and x86 regression checks for shared runtime. Record exact artifacts, repository configuration, hardware and limitations. Each experimental hardware/kernel path needs its own evidence.
 
-Update this tracker when a PR head changes, a change enters the collaboration branch, or upstream merges or closes a submission. Record the integrated revision and validation outcome. After an upstream merge, compare its final implementation with our copy, reconcile differences, and remove redundant downstream changes during the next integration. Keep merged rows with their merge revision until that reconciliation is complete. A closed or superseded PR needs an explicit disposition rather than silently disappearing from the list.
+Resolve the cross-component questions here, then map implementation to the existing [M+ workstreams](https://app.basecamp.com/5994298/buckets/48646031/card_tables/10263379585). The [card reconciliation](upstream-integration-reference.md#relationship-to-existing-basecamp-cards) preserves the mapping and scope questions, including the duplicate Honeykrisp cards, performance criteria and which additional capabilities are release requirements. Reuse existing discussions and work; agree owners, dependencies and acceptance criteria rather than treating every roadmap card as a release blocker.
 
-### Remaining work
+The immediate work is to complete the add-on validation and agree the package, installer, kernel and MLX interfaces needed for one reproducible encrypted Asahi candidate, with an explicitly scoped Aurora preview proposal. Ready upstream fixes can continue in parallel.
 
-| State | Work |
-| --- | --- |
-| Already present locally | Explicit `omarchy-pkg-available` menu guards; architecture-specific preinstall and xpadneo targets; `test/fixtures/optional-aarch64-required`; rebased pacman/keyring work from [#9835](https://github.com/omacom/omarchy/pull/9835); packaged Steam launcher integration |
-| Still required | Package-channel decision and implementation; signed branch builds; publication of required missing packages; tested repository transition; encrypted installer integration and kernel update ownership; Aurora assumption audit |
-| After upstream changes | Compare the actual merged [#9835](https://github.com/omacom/omarchy/pull/9835) tree and subsequent upstream commits against the integration branch, reconcile differences, and extract remaining submissions |
+## Current state and evidence
 
-Use tree comparisons and range-diffs against the actual upstream merge to identify equivalent changes, resolve conflicts, and determine the remaining contribution. Run relevant tests after reconciliation.
+We have taken two steps:
 
-Continue [#12056](https://github.com/omacom/omarchy/pull/12056) and [#12058](https://github.com/omacom/omarchy/pull/12058) through review and coordinate [#9834](https://github.com/omacom/omarchy/pull/9834)/[#9835](https://github.com/omacom/omarchy/pull/9835) with Marcelo. Independent fixes and package recipes can land while installation work proceeds. Prepare the remaining Apple platform contribution with its real package dependencies and evidence; decide whether it is one PR or several based on the final scope and reviewer feedback. ALS and Steam-related changes retain their own review boundaries where useful.
+1. **Distilled the existing fork onto upstream Quattro**, incorporating Marcelo's #9835 with adaptations. Published as `quattro-upstream`, this is a common review starting point for the remaining Apple Silicon changes.
+2. **Extracted and tried the separate `omarchy-mac` add-on.** Automated checks and a limited M2 Max trial covered installation, dev-linking, reboot, suspend/resume, Wi-Fi, playback and microphone recording. The implementation remains on the [candidate branch](https://github.com/omacom/omarchy-mac/tree/integrate/omarchy-mac-package), not merged into `quattro-upstream` or published as a signed tester release.
 
-Propose appropriate recipes for official `omarchy-pkgs` or the relevant upstream provider. Ask Ryan and the maintainers how ARM publication and qualification should work. Disclose temporary dependencies used during testing; do not describe the intended final official package set as if it already supplies the tested system.
+The limited trial gives us confidence to pursue the package split as the integration plan; broader installation, upgrade and hardware validation remain ahead. Existing configuration overrides were retained. Additional audio-restart checks, the full ordered migration and reproducible companion runtime/settings artifacts remain to be completed. The [validation record](https://github.com/omacom/omarchy-mac/blob/d3b22f6ed2ab326f529c42f3b36ff22b63431e05/plans/omarchy-mac-package-validation.md) records revisions and limitations; Scott subsequently confirmed the post-dev-link playback and recording checks it still lists as pending.
 
-## Acceptance evidence
+Installer integration remains unverified against this branch. Marcelo's tested runtime/package baseline needs clarification; the desktop/add-on trial provides no evidence of that integration.
 
-The first complete milestone is:
-
-`recorded signed package set → encrypted fresh installation → independent installed boot → installer-space reclamation → package/kernel update → reboot → recovery`
-
-Run focused and aggregate tests as appropriate. Rehearse destructive operations and interruption cases on disposable storage; use ARM VMs for package transactions and provisioning; use physical Macs for Apple firmware, graphics, audio, suspend, encrypted boot, and recovery. Generic ARM VM success is not Apple hardware validation.
-
-Record model, kernel selection, source and recipe commits, package versions/signers, repository configuration, and test results. Verify encryption and absence of credentials in unencrypted artifacts. Include x86 regression checks for shared runtime changes and upgrade-from-fork tests for the repository transition.
-
-Pool promotion checks complement this evidence. Server-side repository rollback does not automatically undo packages already installed on a Mac.
-
-## Coordination and execution
-
-Concrete next asks, with ownership to be agreed rather than assigned:
-
-| Person | Ask | Expected result |
-| --- | --- | --- |
-| Scott | Maintain the merge tracker and commit-label convention; continue [#12056](https://github.com/omacom/omarchy/pull/12056)/[#12058](https://github.com/omacom/omarchy/pull/12058)/[#8942](https://github.com/omacom/omarchy/pull/8942); identify which installed configurations need migration | A documented collaboration baseline, upstream submission set, and transition targets |
-| Marcelo Alcantara | Agree how to follow [#9835](https://github.com/omacom/omarchy/pull/9835), choose the shared installer repository, and connect his macOS engine to the prepared encrypted installer; identify the exact Asahi/Aurora payload and boot contracts | A source-integration agreement, installer repository home, and versioned handoff specification |
-| Naeem | Which signing route should resolve [#394](https://github.com/omacom/omarchy-mac/issues/394): signing the fork repository or moving the collaboration builds to the pool? How should existing machines acquire the keys and retire TrustAll? | A chosen signing route and tested migration design |
-| Marcelo B., pool maintainer | Why is ARM edge configuration empty while RC/stable are populated? Can the pool expose an opt-in Mac override collection and build the runtime/settings pair from exact branch commits? What retention and promotion guarantees can it provide? | A usable configuration and an explicit build/publication agreement |
-| Wes | Review the encrypted installation and ESP/kernel-update contract; identify the validation needed and whether he wants to own or review part of the Linux installer | Agreed review criteria and an explicit role |
-| Ryan and upstream maintainers | Agree the upstream homes for the macOS app and shared Linux installer changes. What source/recipe revision and build process currently produce official ARM edge? What is needed to publish the eight listed packages, and what evidence qualifies ARM channels for wider release? | Agreed repository destinations and a concrete official packaging and qualification path |
-
-Suggested order:
-
-1. Agree the contribution workflow for the published shared branch, choose the shared installer repository with Marcelo, and maintain the merge tracker as changes are integrated and submitted.
-2. Resolve whether the pool can provide the selectable override collection and exact-source builds. In parallel, define the installed-system contract: encryption, layout, boot ownership, updates, and reclamation states.
-3. Assemble a signed, recorded package candidate and validate package selection and transition behavior. Use a documented signed fallback source if the pool cannot yet supply the required collection.
-4. Integrate the macOS-to-Linux handoff and encrypted installer, including restartable reclamation and package-managed kernel updates.
-5. Complete the Asahi lifecycle on agreed hardware, then broaden testing and qualify Aurora separately.
-6. Land ready upstream fixes and recipes throughout this work; extract the remaining platform changes as their prerequisites and review scope stabilize.
-
-The next deliverable is a shared package-and-installed-system contract, followed by one reproducible encrypted Asahi candidate.
-
-## References
-
-- [Shared branch](https://github.com/omacom/omarchy-mac/tree/quattro-upstream); upstream PRs [#9834](https://github.com/omacom/omarchy/pull/9834), [#9835](https://github.com/omacom/omarchy/pull/9835), [#12056](https://github.com/omacom/omarchy/pull/12056), [#12058](https://github.com/omacom/omarchy/pull/12058), and [#8942](https://github.com/omacom/omarchy/pull/8942).
-- [Official ARM edge database](https://pkgs.omarchy.org/edge/aarch64/omarchy.db); [fork package repository](https://github.com/omarchy-mac/omarchy-pkgs-aarch64); [signing issue #394](https://github.com/omacom/omarchy-mac/issues/394).
-- [Pool](https://omarchy-pool.firemanxbr.org/), [source](https://github.com/firemanxbr/omarchy-pool), [live inventories](https://omarchy-pool.firemanxbr.org/api/v1/stats), and [security model](https://omarchy-pool.firemanxbr.org/docs/security-model).
-- [Marcelo's runtime and installer](https://github.com/maralcbr/omarchy-mx-mac); local `~/code/omarchy-mac-iso/README.md` and its `plans/managed-kernel-updates.md`; local prepared-install work under `~/code/omarchy-mx-mac-integration/apps/omarchy-apple-installer/Engine/overlay/`.
+The [supporting reference](upstream-integration-reference.md) retains dated package observations, the upstream merge record, detailed recovery constraints and the Basecamp mapping. This document is the shared plan to develop together.
