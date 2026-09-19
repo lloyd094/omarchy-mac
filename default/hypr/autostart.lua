@@ -11,6 +11,6 @@ hl.on("hyprland.start", function()
 
   -- Run post-boot hooks after startup config has loaded.
   hl.exec_cmd("sleep 2 && omarchy-hook post-boot")
-  -- ExecCondition on the unit no-ops off Apple Silicon.
-  hl.exec_cmd("systemctl --user start omarchy-asahi-mic.service")
+  -- The add-on handles offline enablement, session activation and user masks.
+  hl.exec_cmd("omarchy-hw-apple-silicon && omarchy-mac-setup-user")
 end)
