@@ -10,6 +10,7 @@ name=${0##*/}
 printf '%s %s\n' "$name" "$*" >>"$CALLS"
 case $name in
   omarchy-hw-apple-silicon) [[ ${APPLE:-1} == 1 ]] ;;
+  omarchy-cmd-present) [[ ${MAPPER_PRESENT:-1} == 1 ]] ;;
   omarchy-audio-asahi-mic-map)
     if [[ ${1:-} == "--save-state" ]]; then exit "${SAVE_STATUS:-0}"; else
       if [[ ${DEFER_ONCE:-0} == 1 && ! -f $CALLS.ready ]]; then touch "$CALLS.ready"; exit 75; fi
@@ -36,7 +37,7 @@ case $name in
 esac
 STUB
 chmod +x "$work/bin/fixture"
-for name in omarchy-hw-apple-silicon omarchy-audio-asahi-mic-map systemctl pactl pw-dump wpctl sleep; do
+for name in omarchy-cmd-present omarchy-hw-apple-silicon omarchy-audio-asahi-mic-map systemctl pactl pw-dump wpctl sleep; do
   ln -s fixture "$work/bin/$name"
 done
 export CALLS="$work/calls" PATH="$work/bin:$PATH"
@@ -66,6 +67,12 @@ run_case OWNER=
 run_case APPLE=0
 ! grep -Eq '^(pactl|omarchy-audio-asahi-mic-map) ' "$CALLS" || fail 'non-Apple audio never touches mapping'
 pass 'inactive services, external input choices, unowned sinks and other hardware are preserved'
+run_case MAPPER_PRESENT=0
+! grep -Eq '^(pactl|omarchy-audio-asahi-mic-map) ' "$CALLS" || fail 'Apple installs without the add-on must skip mapping'
+grep -Fxq 'systemctl --user restart wireplumber.service pipewire.service pipewire-pulse.service' "$CALLS" || fail 'missing optional mapper must not skip daemon restart'
+! grep -Eq 'command not found|Could not save microphone' "$work/output" || fail 'missing optional mapper must not warn'
+pass 'Apple audio restarts normally without the optional add-on'
+
 run_case RESTART_STATUS=42
 grep -Fq 'systemctl --user kill ' "$CALLS" || fail 'existing forced recovery remains available'
 grep -Fxq 'systemctl --user start omarchy-asahi-mic.service' "$CALLS" || fail 'forced recovery restores mapper service'

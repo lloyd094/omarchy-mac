@@ -14,6 +14,7 @@ mic_output=""
 
 prepare_asahi_microphone() {
   omarchy-hw-apple-silicon || return 0
+  omarchy-cmd-present omarchy-audio-asahi-mic-map || return 0
   if ! omarchy-audio-asahi-mic-map --save-state; then
     echo "Could not save microphone mapping gain before audio recovery." >&2
     return 0
