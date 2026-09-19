@@ -49,6 +49,7 @@ for spec in '0 4433' '1 4434' '1 0000'; do
   APPLE=$apple WIFI_ID=$wifi "$setup" "$stage"
   [[ ! -s $CALLS ]] || fail 'non-Apple and excluded hardware are untouched'
 done
+rm "$stage/var/lib/omarchy-mac/wifi-configured"
 if SYSTEMCTL_STATUS=42 "$setup" "$stage"; then fail 'enable failure must be retryable'; fi
 "$setup" "$stage"
 pass 'fresh, upgrade, repeated, interrupted, overrides, masks and hardware gates'
@@ -64,7 +65,7 @@ for relative in etc/modprobe.d/asahi-notch.conf etc/NetworkManager/conf.d/wifi_b
 done
 user_setup="$stage/usr/bin/omarchy-mac-setup-user"
 export XDG_RUNTIME_DIR="$work/no-session"
-unset XDG_CONFIG_HOME
+unset XDG_CONFIG_HOME XDG_STATE_HOME
 for name in alice bob; do
   export HOME="$work/$name"
   policy="$HOME/.config/wireplumber/wireplumber.conf.d/asahi-headset-mic.conf"
@@ -106,14 +107,28 @@ python3 - "$user_setup" "$stage" "$work" <<'PY'
 import os, socket, subprocess, sys
 from pathlib import Path
 setup, stage, work = sys.argv[1:]
+# Redirect filesystem paths while exercising the default live-session branch.
+script = Path(work)/'session-setup'
+script.write_text(Path(setup).read_text().replace('$root/usr/', stage+'/usr/').replace('$root/etc/', stage+'/etc/').replace('$root/run/', stage+'/run/'))
+script.chmod(0o755)
+setup = str(script)
 env = dict(os.environ, HOME=work+'/session', XDG_RUNTIME_DIR=work+'/runtime')
 Path(env['XDG_RUNTIME_DIR']).mkdir()
 with socket.socket(socket.AF_UNIX) as bus:
     bus.bind(env['XDG_RUNTIME_DIR']+'/bus')
-    subprocess.run([setup, stage], env=env, check=True)
+    subprocess.run([setup], env=env, check=True)
     calls = Path(env['CALLS']).read_text()
     assert '--user daemon-reload' in calls and '--user start omarchy-asahi-mic.service' in calls
-    result = subprocess.run([setup, stage], env=dict(env, SYSTEMCTL_STATUS='42'))
+    result = subprocess.run([setup], env=dict(env, SYSTEMCTL_STATUS='42'))
     assert result.returncode == 42
 PY
 pass 'first-session activation errors remain retryable'
+
+# An explicit disable after successful setup remains a choice on later runs.
+rm "$wants"
+"$user_setup" "$stage"
+[[ ! -L $wants ]] || fail 'repeat setup preserves disabled microphone service'
+: >"$CALLS"
+"$setup" "$stage"
+[[ ! -s $CALLS ]] || fail 'repeat setup does not reenable disabled Wi-Fi recovery'
+pass 'explicit disables survive repeated setup'

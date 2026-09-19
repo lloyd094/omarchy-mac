@@ -27,11 +27,24 @@ retire "$root/etc/modprobe.d/asahi-notch.conf" "$share/legacy/asahi-notch.conf"
 
 unit=omarchy-wifi-resume-fix.service
 retire "$root/etc/systemd/system/$unit" "$share/legacy/$unit"
-if "$root/usr/lib/omarchy-mac/wifi-supported"; then
+# Generated enablement links still point into /etc after the fragment retires.
+# Repair only those exact links; masks and custom links remain authoritative.
+if [[ ! -e $root/etc/systemd/system/$unit && ! -L $root/etc/systemd/system/$unit ]] &&
+  cmp -s "$root/etc/systemd/system/$unit.omarchy-mac-retired" "$share/legacy/$unit"; then
+  for target in suspend hibernate hybrid-sleep suspend-then-hibernate; do
+    link="$root/etc/systemd/system/$target.target.wants/$unit"
+    if [[ -L $link && $(readlink "$link") == "/etc/systemd/system/$unit" ]]; then
+      ln -sfn "/usr/lib/systemd/system/$unit" "$link"
+    fi
+  done
+fi
+marker="$root/var/lib/omarchy-mac/wifi-configured"
+if "$root/usr/lib/omarchy-mac/wifi-supported" && [[ ! -f $marker ]]; then
   if [[ -e $root/etc/systemd/system/$unit || -L $root/etc/systemd/system/$unit || -e $root/run/systemd/system/$unit || -L $root/run/systemd/system/$unit ]]; then
     echo "Preserving Wi-Fi unit override: $root/etc/systemd/system/$unit"
   else
     systemctl --root="${root:-/}" enable "$unit"
+    install -Dm644 /dev/null "$marker"
   fi
 fi
 if [[ -z $root && -d /run/systemd/system ]]; then

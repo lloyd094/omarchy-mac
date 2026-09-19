@@ -27,6 +27,11 @@ for file in "$config/systemd/user/$unit" "$root/etc/systemd/user/$unit" "${XDG_R
   fi
 done
 wants="$config/systemd/user/graphical-session.target.wants"
+marker="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/mac-microphone-configured"
+if [[ -f $marker && ! -e $wants/$unit && ! -L $wants/$unit ]]; then
+  echo "Preserving disabled microphone service"
+  exit 0
+fi
 mkdir -p "$wants"
 if [[ ! -e $wants/$unit && ! -L $wants/$unit ]]; then
   ln -s "/usr/lib/systemd/user/$unit" "$wants/$unit"
@@ -34,8 +39,9 @@ elif [[ ! -L $wants/$unit || $(readlink "$wants/$unit") != "/usr/lib/systemd/use
   echo "Preserving microphone activation override: $wants/$unit"
   exit 0
 fi
+install -Dm644 /dev/null "$marker"
 # Offline user finalization needs no user bus or PipeWire endpoints.
-if [[ -S ${XDG_RUNTIME_DIR:-/run/user/$UID}/bus ]]; then
+if [[ -z $root && -S ${XDG_RUNTIME_DIR:-/run/user/$UID}/bus ]]; then
   systemctl --user daemon-reload
   systemctl --user cat "$unit"
   systemctl --user start "$unit"
