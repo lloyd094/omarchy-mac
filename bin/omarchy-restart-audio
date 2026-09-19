@@ -5,6 +5,78 @@
 
 services=(wireplumber.service pipewire.service pipewire-pulse.service)
 
+# WirePlumber can spin while unloading its DSP module with the mapping linked.
+# Remove only our owned null sink before daemon teardown, then restore it.
+mic_restore=0
+mic_was_active=0
+mic_input=""
+mic_output=""
+
+prepare_asahi_microphone() {
+  omarchy-hw-apple-silicon || return 0
+  if ! omarchy-audio-asahi-mic-map --save-state; then
+    echo "Could not save microphone mapping gain before audio recovery." >&2
+    return 0
+  fi
+  local module
+  module=$(timeout 5s pactl --format=json list sinks | jq -er '
+    .[] | select(.name == "omarchy_asahi_mic" and
+      (.properties["omarchy.asahi-mic.owner"] // "") != "") | .owner_module') || return 0
+  [[ $module =~ ^[0-9]+$ ]] || return 0
+  mic_input=$(timeout 5s pactl get-default-source) || return 0
+  mic_output=$(timeout 5s pactl get-default-sink) || return 0
+  if systemctl --user is-active --quiet omarchy-asahi-mic.service; then
+    mic_was_active=1
+  fi
+  mic_restore=1
+  if (( mic_was_active )); then
+    timeout 20s systemctl --user stop omarchy-asahi-mic.service || return 1
+  fi
+  timeout 5s pactl unload-module "$module" || return 1
+  # Pulse acknowledges the unload before all clients observe graph removal.
+  # Synchronize with the core and give the session manager a dispatch turn.
+  local graph attempt
+  for attempt in {1..20}; do
+    graph=$(timeout 5s pw-dump) || return 1
+    if jq -e 'all(.[]; .info.props["node.name"] != "omarchy_asahi_mic")' <<<"$graph" >/dev/null; then
+      sleep 0.2
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+restore_asahi_microphone() {
+  (( mic_restore )) || return 0
+  mic_restore=0
+  local status=0
+  # One reconciliation rebuilds links and restores saved gain before defaults.
+  local attempt result=75
+  for attempt in {1..20}; do
+    timeout 20s omarchy-audio-asahi-mic-map
+    result=$?
+    (( result == 75 )) || break
+    sleep 0.5
+  done
+  (( result == 0 )) || status=1
+  if (( mic_was_active )); then
+    systemctl --user start omarchy-asahi-mic.service || status=1
+  fi
+  # A selected device may have been unplugged during recovery. Leave the
+  # server's fallback if the original device no longer exists.
+  if timeout 5s pactl list short sources | awk '{print $2}' | grep -Fxq "$mic_input"; then
+    timeout 5s pactl set-default-source "$mic_input" || status=1
+  fi
+  if timeout 5s pactl list short sinks | awk '{print $2}' | grep -Fxq "$mic_output"; then
+    timeout 5s pactl set-default-sink "$mic_output" || status=1
+  fi
+  if (( status )); then
+    echo "Microphone mapping recovery is incomplete; inspect omarchy-asahi-mic.service." >&2
+  fi
+  return "$status"
+}
+
 restart_audio_services() {
   echo -e "Restarting audio services...\n"
 
@@ -203,10 +275,10 @@ recover_stuck_usb_audio() {
   (( reset_count > 0 ))
 }
 
-# Capture the owned mapping gain before a healthy daemon is deliberately reset.
-# A broken audio server must not prevent the existing recovery path.
-if omarchy-cmd-present omarchy-audio-asahi-mic-map && ! omarchy-audio-asahi-mic-map --save-state; then
-  echo "Could not save microphone mapping gain before audio recovery." >&2
+# Always put the mapping/service back if recovery exits early.
+trap restore_asahi_microphone EXIT
+if ! prepare_asahi_microphone; then
+  echo "Could not detach microphone mapping cleanly; continuing audio recovery." >&2
 fi
 restart_audio_services || true
 
@@ -221,6 +293,8 @@ if ! wpctl_healthy; then
   fi
 fi
 
+restore_asahi_microphone || exit 1
+trap - EXIT
 sleep 2
 
 echo -e "\nAudio status:\n"
