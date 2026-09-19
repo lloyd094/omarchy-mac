@@ -63,7 +63,18 @@ for migration in 1789132600 1789136143 1789140994 1789275235 1789780917; do
   [[ -e $INSTALLED ]] || fail 'historical and current migrations acquire add-on'
   APPLE=1 bash -euo pipefail "$ROOT/migrations/$migration.sh"
 done
-[[ $(grep -c -- '^-S --needed --noconfirm omarchy-mac$' "$CALLS") == 6 ]] || fail 'only the unchanged historical pacman migration repeats its --needed request'
+[[ $(grep -c -- '^-S --needed --noconfirm omarchy-mac$' "$CALLS") == 5 ]] || fail 'each migration acquires the add-on only when missing'
+# Local package candidates must work before signed repository publication.
+: >"$CALLS"
+APPLE=1 PKG_STATUS=42 bash -euo pipefail "$ROOT/migrations/1789275235.sh"
+! grep -q -- '^-S ' "$CALLS" || fail 'installed add-on must not require a sync repository entry'
+rm "$INSTALLED"
+status=0
+APPLE=1 PKG_STATUS=42 bash -euo pipefail "$ROOT/migrations/1789275235.sh" || status=$?
+[[ $status == 42 && ! -e $INSTALLED ]] || fail 'historical acquisition failure must remain retryable'
+APPLE=1 bash -euo pipefail "$ROOT/migrations/1789275235.sh"
+[[ -e $INSTALLED ]] || fail 'historical acquisition must succeed on retry'
+pass 'local add-on candidates need no sync entry and missing-package failures retry'
 for apple in 0 1; do
   APPLE=$apple bash -eE -c 'source "$1"' bash "$work/network.sh"
 done
